@@ -3,6 +3,14 @@
  * SiteCatalogo2 - Produtos (CRUD completo) + Importação/Exportação por Planilha
  */
 require_once __DIR__ . '/includes/functions.php';
+
+// === CONTROLE DE ACESSO ===
+require_auth();
+if (!check_permission('gerente')) {
+    header('Location: ' . admin_url());
+    exit('Acesso negado.');
+}
+
 $page_title = 'Produtos';
 
 // ========== HELPER: URL CORRETA PARA UPLOADS ==========

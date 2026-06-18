@@ -3,6 +3,14 @@
  * SiteCatalogo2 - Clientes (CRUD)
  */
 require_once __DIR__ . '/includes/functions.php';
+
+// === CONTROLE DE ACESSO ===
+require_auth();
+if (!check_permission('atendente')) {
+    header('Location: ' . admin_url());
+    exit('Acesso negado.');
+}
+
 $page_title = 'Clientes';
 
 $action = $_GET['action'] ?? 'list';

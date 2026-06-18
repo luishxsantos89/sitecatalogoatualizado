@@ -3,12 +3,27 @@
  * SiteCatalogo2 - Estoque (Controle de Estoque)
  */
 require_once __DIR__ . '/includes/functions.php';
+
+// === CONTROLE DE ACESSO ===
+require_auth();
+if (!check_permission('atendente')) {
+    header('Location: ' . admin_url());
+    exit('Acesso negado.');
+}
+
+// Permissões internas do estoque
+$can_movimentar = check_permission('gerente');  // só gerente+ movimenta e importa
 $page_title = 'Estoque';
 
 $action = $_GET['action'] ?? 'list';
 
 // ========== IMPORTAÇÃO DE ESTOQUE POR PLANILHA ==========
 if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!$can_movimentar) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'msg' => 'Acesso negado. Apenas gerente pode importar estoque.']);
+        exit;
+    }
     header('Content-Type: application/json');
 
     if (empty($_FILES['planilha']['tmp_name'])) {
@@ -191,6 +206,10 @@ if ($action === 'exportar') {
 
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'movimentar') {
+    if (!$can_movimentar) {
+        set_flash('error', 'Acesso negado. Apenas gerente pode movimentar estoque.');
+        header('Location: estoque.php'); exit;
+    }
     $pid  = (int)($_POST['produto_id'] ?? 0);
     $tipo = $_POST['tipo'] ?? 'entrada';
     $qtd  = (int)($_POST['quantidade'] ?? 0);
@@ -271,7 +290,9 @@ require_once __DIR__ . '/includes/header.php';
 <div class="page-header">
     <h1><i class="fas fa-warehouse"></i> Controle de Estoque</h1>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <?php if ($can_movimentar): ?>
         <button onclick="abrirModalImportar()" class="btn btn-success"><i class="fas fa-file-excel"></i> Importar Planilha</button>
+        <?php endif; ?>
         <a href="estoque.php?action=exportar" class="btn btn-outline"><i class="fas fa-file-export"></i> Exportar Planilha</a>
     </div>
 </div>
@@ -409,10 +430,14 @@ require_once __DIR__ . '/includes/header.php';
                             <?php endif; ?>
                         </td>
                         <td>
+                            <?php if ($can_movimentar): ?>
                             <button onclick="abrirMov(<?php echo $p['id']; ?>,'<?php echo addslashes($p['nome']); ?>')"
                                     class="btn btn-sm btn-primary">
                                 <i class="fas fa-exchange-alt"></i> Movimentar
                             </button>
+                            <?php else: ?>
+                            <span class="text-muted" style="font-size:0.75rem;"><i class="fas fa-lock"></i> Somente leitura</span>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>

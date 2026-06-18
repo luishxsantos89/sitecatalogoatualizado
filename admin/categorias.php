@@ -3,6 +3,14 @@
  * SiteCatalogo2 - Categorias (CRUD)
  */
 require_once __DIR__ . '/includes/functions.php';
+
+// === CONTROLE DE ACESSO ===
+require_auth();
+if (!check_permission('gerente')) {
+    header('Location: ' . admin_url());
+    exit('Acesso negado.');
+}
+
 $page_title = 'Categorias';
 
 $action = $_GET['action'] ?? 'list';

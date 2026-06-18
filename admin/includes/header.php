@@ -55,36 +55,50 @@ if (!isset($current_page)) $current_page = basename($_SERVER['PHP_SELF'], '.php'
         </div>
 
         <nav class="sidebar-nav">
+            <?php if (check_permission('vendedor')): ?>
             <a href="./" class="nav-link <?php echo active_class($current_page, 'index'); ?>">
                 <i class="fas fa-chart-pie"></i><span>Dashboard</span>
             </a>
+            <?php endif; ?>
 
             <div class="nav-divider"><span>Catálogo</span></div>
 
+            <?php if (check_permission('gerente')): ?>
             <a href="produtos.php" class="nav-link <?php echo active_class($current_page, 'produtos'); ?>">
                 <i class="fas fa-box-open"></i><span>Produtos</span>
             </a>
+            <?php endif; ?>
+            <?php if (check_permission('gerente')): ?>
             <a href="categorias.php" class="nav-link <?php echo active_class($current_page, 'categorias'); ?>">
                 <i class="fas fa-tags"></i><span>Categorias</span>
             </a>
+            <?php endif; ?>
+            <?php if (check_permission('atendente')): ?>
             <a href="estoque.php" class="nav-link <?php echo active_class($current_page, 'estoque'); ?>">
                 <i class="fas fa-warehouse"></i><span>Estoque</span>
             </a>
+            <?php endif; ?>
+            <?php if (check_permission('gerente')): ?>
             <a href="banners.php" class="nav-link <?php echo active_class($current_page, 'banners'); ?>">
                 <i class="fas fa-image"></i><span>Banners</span>
             </a>
+            <?php endif; ?>
 
             <div class="nav-divider"><span>Comercial</span></div>
 
+            <?php if (check_permission('vendedor')): ?>
             <a href="orcamentos.php" class="nav-link <?php echo active_class($current_page, 'orcamentos'); ?>">
                 <i class="fas fa-file-invoice-dollar"></i><span>Orçamentos</span>
                 <?php if ($orcamentos_pendentes > 0): ?>
                 <span class="nav-badge"><?php echo $orcamentos_pendentes; ?></span>
                 <?php endif; ?>
             </a>
+            <?php endif; ?>
+            <?php if (check_permission('atendente')): ?>
             <a href="clientes.php" class="nav-link <?php echo active_class($current_page, 'clientes'); ?>">
                 <i class="fas fa-users"></i><span>Clientes</span>
             </a>
+            <?php endif; ?>
 
             <?php if (check_permission('gerente')): ?>
             <div class="nav-divider"><span>Financeiro</span></div>
@@ -105,24 +119,30 @@ if (!isset($current_page)) $current_page = basename($_SERVER['PHP_SELF'], '.php'
 
             <div class="nav-divider"><span>Sistema</span></div>
             
-                <a href="email.php" class="nav-link <?php echo active_class($current_page, 'email'); ?>">
-                    <i class="fas fa-envelope"></i><span>Email</span>
-                    <?php if ($emails_nao_lidos > 0): ?>
-                    <span class="nav-badge"><?php echo $emails_nao_lidos; ?></span>
-                    <?php endif; ?>
-                </a>
+            <?php if (check_permission('admin')): ?>
+            <a href="email.php" class="nav-link <?php echo active_class($current_page, 'email'); ?>">
+                <i class="fas fa-envelope"></i><span>Email</span>
+                <?php if ($emails_nao_lidos > 0): ?>
+                <span class="nav-badge"><?php echo $emails_nao_lidos; ?></span>
+                <?php endif; ?>
+            </a>
+            <?php endif; ?>
            
             <?php if (check_permission('admin')): ?>
             <a href="usuarios.php" class="nav-link <?php echo active_class($current_page, 'usuarios'); ?>">
                 <i class="fas fa-user-shield"></i><span>Usuários</span>
             </a>
             <?php endif; ?>
+            <?php if (check_permission('admin')): ?>
             <a href="configuracoes.php" class="nav-link <?php echo active_class($current_page, 'configuracoes'); ?>">
                 <i class="fas fa-cog"></i><span>Configurações</span>
             </a>
+            <?php endif; ?>
+            <?php if (check_permission('admin')): ?>
             <a href="seo.php" class="nav-link <?php echo active_class($current_page, 'seo'); ?>">
                 <i class="fas fa-search"></i><span>SEO</span>
             </a>
+            <?php endif; ?>
         </nav>
 
         <div class="sidebar-footer">

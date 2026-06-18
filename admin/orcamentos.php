@@ -3,11 +3,23 @@
  * SiteCatalogo2 - Orçamentos (CRUD)
  */
 require_once __DIR__ . '/includes/functions.php';
+
+// === CONTROLE DE ACESSO ===
+require_auth();
+if (!check_permission('vendedor')) {
+    header('Location: ' . admin_url());
+    exit('Acesso negado.');
+}
+
+// Permissões internas do orçamento (baseado na tabela de permissões)
+$is_admin          = check_permission('admin');
+$can_approve       = check_permission('gerente');   // aprovar, excluir
+$can_change_atendente = check_permission('admin');   // alterar atendente
+
 $page_title = 'Orçamentos';
 
 $action = $_GET['action'] ?? 'list';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$is_admin = check_permission('admin');
 
 // AJAX - Buscar produtos
 if ($action === 'ajax_buscar_produtos') {
@@ -42,6 +54,13 @@ try {
 
 // Atualizar status
 if ($action === 'status' && $id && isset($_GET['status'])) {
+    // Só gerente+ pode aprovar/excluir (mudar para aprovado/rejeitado/cancelado)
+    $status_restritos = ['aprovado', 'rejeitado', 'cancelado'];
+    $ns = $_GET['status'];
+    if (in_array($ns, $status_restritos) && !$can_approve) {
+        set_flash('error', 'Acesso negado. Apenas gerente pode aprovar/rejeitar/cancelar orçamentos.');
+        header('Location: orcamentos.php?action=view&id=' . $id); exit;
+    }
     $valid = ['novo','pendente','em_analise','respondido','aprovado','rejeitado','cancelado'];
     $ns = $_GET['status'];
     if (in_array($ns, $valid)) {
@@ -78,7 +97,11 @@ if ($action === 'status' && $id && isset($_GET['status'])) {
 }
 
 // Atualizar atendente (somente admin)
-if ($action === 'atualizar_atendente' && $id && $is_admin) {
+if ($action === 'atualizar_atendente' && $id) {
+    if (!$can_change_atendente) {
+        set_flash('error', 'Acesso negado. Apenas administrador pode alterar o atendente.');
+        header('Location: orcamentos.php?action=view&id=' . $id); exit;
+    }
     $uid = (int)($_POST['usuario_id'] ?? 0);
     if ($uid > 0) {
         db()->prepare("UPDATE " . table('orcamentos') . " SET usuario_id = ? WHERE id = ?")->execute([$uid, $id]);
@@ -89,6 +112,10 @@ if ($action === 'atualizar_atendente' && $id && $is_admin) {
 
 // Deletar
 if ($action === 'delete' && $id) {
+    if (!$can_approve) {
+        set_flash('error', 'Acesso negado. Apenas gerente pode excluir orçamentos.');
+        header('Location: orcamentos.php'); exit;
+    }
     db()->prepare("DELETE FROM " . table('orcamento_itens') . " WHERE orcamento_id = ?")->execute([$id]);
     db()->prepare("DELETE FROM " . table('orcamentos') . " WHERE id = ?")->execute([$id]);
     set_flash('success', 'Orçamento excluído!');
@@ -603,7 +630,9 @@ renderTabela();
         <a href="<?php echo whatsapp_link($orcamento['cliente_telefone'], "Olá! Segue o orçamento {$orcamento['codigo']}"); ?>" target="_blank" class="btn btn-success"><i class="fab fa-whatsapp"></i> WhatsApp</a>
         <?php endif; ?>
         <button onclick="imprimirOrcamento()" class="btn btn-outline"><i class="fas fa-print"></i> Imprimir</button>
+        <?php if ($can_approve): ?>
         <a href="orcamentos.php?action=delete&id=<?php echo $id; ?>" class="btn btn-danger" onclick="return confirm('Excluir orçamento?')"><i class="fas fa-trash"></i></a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -625,7 +654,7 @@ renderTabela();
                         <small class="text-muted">Atendente</small>
                         <p>
                             <?php echo sanitize($orcamento['atendente']??'-'); ?>
-                            <?php if ($is_admin): ?>
+                            <?php if ($can_change_atendente): ?>
                             <button onclick="document.getElementById('modalAtendente').style.display='flex'" class="btn btn-sm btn-light" style="margin-left:6px;" title="Alterar atendente">
                                 <i class="fas fa-edit"></i>
                             </button>
@@ -678,7 +707,11 @@ renderTabela();
         <div class="card">
             <div class="card-header"><h3><i class="fas fa-tasks"></i> Atualizar Status</h3></div>
             <div class="card-body">
-                <?php foreach ($status_list as $s): ?>
+                <?php foreach ($status_list as $s):
+                    // Só gerente+ vê botões de aprovar/rejeitar/cancelar
+                    $status_restritos_view = ['aprovado', 'rejeitado', 'cancelado'];
+                    if (in_array($s, $status_restritos_view) && !$can_approve) continue;
+                ?>
                 <a href="orcamentos.php?action=status&id=<?php echo $id; ?>&status=<?php echo $s; ?>"
                    class="btn btn-block <?php echo $orcamento['status']===$s?'btn-primary':'btn-light'; ?>"
                    style="margin-bottom:8px;justify-content:flex-start;">
@@ -686,12 +719,17 @@ renderTabela();
                     <?php if ($orcamento['status']===$s): ?><i class="fas fa-check" style="margin-left:auto;"></i><?php endif; ?>
                 </a>
                 <?php endforeach; ?>
+                <?php if (!$can_approve): ?>
+                <p style="font-size:0.75rem;color:var(--gray-400);margin-top:8px;text-align:center;">
+                    <i class="fas fa-lock"></i> Aprovação restrita ao gerente
+                </p>
+                <?php endif; ?>
             </div>
         </div>
     </div>
 </div>
 
-<?php if ($is_admin && !empty($usuarios_list)): ?>
+<?php if ($can_change_atendente && !empty($usuarios_list)): ?>
 <!-- Modal Alterar Atendente -->
 <div id="modalAtendente" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
     <div style="background:#fff;border-radius:12px;padding:28px;width:100%;max-width:420px;">
@@ -925,7 +963,9 @@ function imprimirOrcamento() {
                         <?php if (!empty($o['cliente_telefone'])): ?>
                         <a href="<?php echo whatsapp_link($o['cliente_telefone']); ?>" target="_blank" class="btn btn-sm btn-success" title="WhatsApp"><i class="fab fa-whatsapp"></i></a>
                         <?php endif; ?>
+                        <?php if ($can_approve): ?>
                         <a href="orcamentos.php?action=delete&id=<?php echo $o['id']; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Excluir?')"><i class="fas fa-trash"></i></a>
+                        <?php endif; ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>

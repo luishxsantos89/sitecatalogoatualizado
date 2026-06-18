@@ -3,6 +3,14 @@
  * SiteCatalogo2 - Dashboard
  */
 require_once __DIR__ . '/includes/functions.php';
+
+// === CONTROLE DE ACESSO ===
+require_auth();
+if (!check_permission('vendedor')) {
+    header('Location: ' . admin_url());
+    exit('Acesso negado.');
+}
+
 $page_title = 'Dashboard';
 
 $counts = get_counts();
