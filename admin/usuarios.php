@@ -6,6 +6,7 @@ if (!check_permission('admin')) { set_flash('error','Acesso negado'); header('Lo
 $action = $_GET['action'] ?? 'list';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
+// ─── SALVAR (INSERT ou UPDATE) ──────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nome  = trim($_POST['nome'] ?? '');
     $email = trim($_POST['email'] ?? '');
@@ -13,45 +14,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $status= $_POST['status'] ?? 'ativo';
     $senha = $_POST['senha'] ?? '';
 
-    if (empty($nome)||empty($email)) { set_flash('error','Nome e e-mail são obrigatórios'); }
-    else {
+    // CORREÇÃO 1: Validar role contra ENUM do banco (sem 'atendente')
+    $roles_validos = ['admin', 'gerente', 'vendedor', 'atendente'];
+    if (!in_array($role, $roles_validos)) {
+        $role = 'vendedor';
+    }
+
+    if (empty($nome) || empty($email)) {
+        set_flash('error', 'Nome e e-mail são obrigatórios');
+    } else {
         try {
-            $dados = ['nome'=>$nome,'email'=>$email,'role'=>$role,'status'=>$status];
-            if (!empty($senha)) $dados['senha'] = password_hash($senha, PASSWORD_DEFAULT);
+            $dados = ['nome' => $nome, 'email' => $email, 'role' => $role, 'status' => $status];
+
+            if (!empty($senha)) {
+                $dados['senha'] = password_hash($senha, PASSWORD_DEFAULT);
+            }
 
             if (!empty($_FILES['avatar']['name'])) {
-                $up = handle_upload(['name'=>$_FILES['avatar']['name'],'tmp_name'=>$_FILES['avatar']['tmp_name'],'error'=>$_FILES['avatar']['error']], 'avatars');
+                $up = upload_file($_FILES['avatar'], 'avatars', ['jpg','jpeg','png','gif','webp']);
                 if ($up) $dados['avatar'] = $up;
             }
 
-            if ($id) {
-                $f=[]; $v=[];
-                foreach ($dados as $k=>$val) { $f[]="{$k}=?"; $v[]=$val; }
-                $v[]=$id;
-                db()->prepare("UPDATE ".table('usuarios')." SET ".implode(',',$f)." WHERE id=?")->execute($v);
-                set_flash('success','Usuário atualizado!');
+            // CORREÇÃO 2: Verificar se é edição (id > 0) ou novo cadastro
+            if ($id > 0) {
+                // UPDATE
+                $f = []; $v = [];
+                foreach ($dados as $k => $val) { $f[] = "{$k} = ?"; $v[] = $val; }
+                $v[] = $id;
+                db()->prepare("UPDATE " . table('usuarios') . " SET " . implode(', ', $f) . " WHERE id = ?")->execute($v);
+                set_flash('success', 'Usuário atualizado!');
             } else {
-                if (empty($senha)) { set_flash('error','Senha é obrigatória para novo usuário'); header('Location: usuarios.php?action=new'); exit; }
-                $cols=implode(',',array_keys($dados));
-                $ph=implode(',',array_fill(0,count($dados),'?'));
-                db()->prepare("INSERT INTO ".table('usuarios')." ({$cols}) VALUES ({$ph})")->execute(array_values($dados));
-                set_flash('success','Usuário criado!');
+                // INSERT
+                if (empty($senha)) {
+                    set_flash('error', 'Senha é obrigatória para novo usuário');
+                    header('Location: usuarios.php?action=new');
+                    exit;
+                }
+                $cols = implode(',', array_keys($dados));
+                $ph = implode(',', array_fill(0, count($dados), '?'));
+                db()->prepare("INSERT INTO " . table('usuarios') . " ({$cols}) VALUES ({$ph})")
+                    ->execute(array_values($dados));
+                set_flash('success', 'Usuário criado!');
             }
-            header('Location: usuarios.php'); exit;
-        } catch(Exception $e) { set_flash('error','Erro: '.$e->getMessage()); }
+            header('Location: usuarios.php');
+            exit;
+        } catch (Exception $e) {
+            set_flash('error', 'Erro: ' . $e->getMessage());
+        }
     }
 }
 
-if ($action === 'delete' && $id && $id !== ($_SESSION['admin_id']??0)) {
-    db()->prepare("DELETE FROM ".table('usuarios')." WHERE id=?")->execute([$id]);
-    set_flash('success','Usuário excluído!');
-    header('Location: usuarios.php'); exit;
+// ─── DELETAR ─────────────────────────────────────────────────────────
+if ($action === 'delete' && $id && $id !== ($_SESSION['admin_id'] ?? 0)) {
+    db()->prepare("DELETE FROM " . table('usuarios') . " WHERE id = ?")->execute([$id]);
+    set_flash('success', 'Usuário excluído!');
+    header('Location: usuarios.php');
+    exit;
 }
 
+// ─── CARREGAR USUÁRIO PARA EDIÇÃO ──────────────────────────────────
 $usuario = null;
-if (($action==='edit')&&$id) { $s=db()->prepare("SELECT * FROM ".table('usuarios')." WHERE id=?"); $s->execute([$id]); $usuario=$s->fetch(); }
+if ($action === 'edit' && $id) {
+    $s = db()->prepare("SELECT * FROM " . table('usuarios') . " WHERE id = ?");
+    $s->execute([$id]);
+    $usuario = $s->fetch();
+}
 
-$usuarios = db()->query("SELECT * FROM ".table('usuarios')." ORDER BY nome")->fetchAll();
+// ─── LISTAR TODOS ──────────────────────────────────────────────────
+$usuarios = db()->query("SELECT * FROM " . table('usuarios') . " ORDER BY nome")->fetchAll();
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -64,27 +94,29 @@ require_once __DIR__ . '/includes/header.php';
 
 <?php if ($action === 'new' || $action === 'edit'): ?>
 <div class="card" style="max-width:600px;">
-    <div class="card-header"><h3><i class="fas fa-user"></i> <?php echo $usuario?'Editar':'Novo'; ?> Usuário</h3></div>
+    <div class="card-header"><h3><i class="fas fa-user"></i> <?php echo $usuario ? 'Editar' : 'Novo'; ?> Usuário</h3></div>
     <div class="card-body">
-        <form method="POST" action="usuarios.php<?php echo $id?"?action=edit&id={$id}":"?action=new"; ?>" enctype="multipart/form-data">
-            <div class="form-group"><label>Nome *</label><input type="text" name="nome" value="<?php echo sanitize($usuario['nome']??''); ?>" required></div>
-            <div class="form-group"><label>E-mail *</label><input type="email" name="email" value="<?php echo sanitize($usuario['email']??''); ?>" required></div>
-            <div class="form-group"><label>Senha <?php echo $usuario?'(deixe em branco para não alterar)':'*'; ?></label><input type="password" name="senha"></div>
+        <!-- CORREÇÃO 3: action do form com ID na URL para saber se é edição -->
+        <form method="POST" action="usuarios.php<?php echo $id ? '?action=edit&id=' . $id : '?action=new'; ?>" enctype="multipart/form-data">
+            <div class="form-group"><label>Nome *</label><input type="text" name="nome" value="<?php echo sanitize($usuario['nome'] ?? ''); ?>" required></div>
+            <div class="form-group"><label>E-mail *</label><input type="email" name="email" value="<?php echo sanitize($usuario['email'] ?? ''); ?>" required></div>
+            <div class="form-group"><label>Senha <?php echo $usuario ? '(deixe em branco para não alterar)' : '*'; ?></label><input type="password" name="senha"></div>
             <div class="form-row form-row-2">
                 <div class="form-group">
                     <label>Nível</label>
                     <select name="role">
-                        <option value="vendedor" <?php echo selected($usuario['role']??'vendedor','vendedor'); ?>>Vendedor</option>
-                        <option value="atendente" <?php echo selected($usuario['role']??'','atendente'); ?>>Atendente</option>
-                        <option value="gerente" <?php echo selected($usuario['role']??'','gerente'); ?>>Gerente</option>
-                        <option value="admin" <?php echo selected($usuario['role']??'','admin'); ?>>Administrador</option>
+                        <option value="vendedor" <?php echo selected($usuario['role'] ?? 'vendedor', 'vendedor'); ?>>Vendedor</option>
+                        <option value="atendente" <?php echo selected($usuario['role'] ?? '', 'atendente'); ?>>Atendente</option>
+                        <option value="gerente" <?php echo selected($usuario['role'] ?? '', 'gerente'); ?>>Gerente</option>
+                        <option value="admin" <?php echo selected($usuario['role'] ?? '', 'admin'); ?>>Administrador</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label>Status</label>
                     <select name="status">
-                        <option value="ativo" <?php echo selected($usuario['status']??'ativo','ativo'); ?>>Ativo</option>
-                        <option value="inativo" <?php echo selected($usuario['status']??'','inativo'); ?>>Inativo</option>
+                        <option value="ativo" <?php echo selected($usuario['status'] ?? 'ativo', 'ativo'); ?>>Ativo</option>
+                        <option value="inativo" <?php echo selected($usuario['status'] ?? '', 'inativo'); ?>>Inativo</option>
+                        <option value="bloqueado" <?php echo selected($usuario['status'] ?? '', 'bloqueado'); ?>>Bloqueado</option>
                     </select>
                 </div>
             </div>
@@ -118,7 +150,7 @@ require_once __DIR__ . '/includes/header.php';
                 $perms = [
                     ['Acessar o sistema (login)', true, true, true, true],
                     ['Ver catálogo / produtos', true, true, true, true],
-                    ['Gerenciar produtos / categorias', false, true, true, true],
+                    ['Gerenciar produtos / categorias', false, false, true, true],
                     ['Ver orçamentos', true, true, true, true],
                     ['Criar / editar orçamentos', true, true, true, true],
                     ['Aprovar orçamentos', false, false, true, true],
@@ -167,10 +199,10 @@ require_once __DIR__ . '/includes/header.php';
                     <td><?php echo sanitize($u['email']); ?></td>
                     <td><?php echo ucfirst($u['role']); ?></td>
                     <td><span class="badge-status status-<?php echo $u['status']; ?>"><?php echo ucfirst($u['status']); ?></span></td>
-                    <td><?php echo $u['ultimo_acesso']?format_date($u['ultimo_acesso'],'d/m/Y H:i'):'-'; ?></td>
+                    <td><?php echo $u['ultimo_acesso'] ? format_date($u['ultimo_acesso'], 'd/m/Y H:i') : '-'; ?></td>
                     <td>
                         <a href="usuarios.php?action=edit&id=<?php echo $u['id']; ?>" class="btn btn-sm btn-primary"><i class="fas fa-edit"></i></a>
-                        <?php if ($u['id'] !== ($_SESSION['admin_id']??0)): ?>
+                        <?php if ($u['id'] !== ($_SESSION['admin_id'] ?? 0)): ?>
                         <a href="usuarios.php?action=delete&id=<?php echo $u['id']; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Excluir usuário?')"><i class="fas fa-trash"></i></a>
                         <?php endif; ?>
                     </td>

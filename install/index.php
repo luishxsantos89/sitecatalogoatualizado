@@ -66,7 +66,7 @@ CREATE TABLE `sc_usuarios` (
   `email` varchar(255) NOT NULL,
   `senha` varchar(255) NOT NULL,
   `avatar` varchar(255) DEFAULT NULL,
-  `role` enum('admin','gerente','vendedor') DEFAULT 'vendedor',
+  `role` enum('admin','gerente','vendedor','atendente') DEFAULT 'vendedor',
   `status` enum('ativo','inativo','bloqueado') DEFAULT 'ativo',
   `ultimo_acesso` datetime DEFAULT NULL,
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,

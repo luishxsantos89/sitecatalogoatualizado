@@ -38,7 +38,7 @@ CREATE TABLE `sc_usuarios` (
   `email` varchar(255) NOT NULL,
   `senha` varchar(255) NOT NULL,
   `avatar` varchar(255) DEFAULT NULL,
-  `role` enum('admin','gerente','vendedor') DEFAULT 'vendedor',
+  `role` enum('admin','gerente','vendedor','atendente') DEFAULT 'vendedor',
   `status` enum('ativo','inativo','bloqueado') DEFAULT 'ativo',
   `ultimo_acesso` datetime DEFAULT NULL,
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
@@ -462,7 +462,7 @@ CREATE TABLE `sc_emails` (
 SET FOREIGN_KEY_CHECKS = 1;
 -- ============================================================
 -- FIM DO SCHEMA DEFINITIVO
--- Versão: 2.4  |  Atualizado: 2026-06-18
+-- Versão: 2.5  |  Atualizado: 2026-06-18
 -- Garantias:
 --   • sc_clientes.nome_razaosocial: NOT NULL (sem DEFAULT, obrigatório)
 --   • sc_clientes.nome: NOT NULL DEFAULT '' (compatibilidade)
@@ -470,6 +470,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 --   • sc_banners.popup_intervalo: DEFAULT 0
 --   • sc_orcamentos.cliente_cidade: PRESENTE (varchar 255)
 --   • sc_orcamentos.cliente_estado: ADICIONADO (char 2)
+--   • sc_usuarios.role: 'atendente' ADICIONADO ao ENUM
 --   • sc_configuracoes.orcamento_whatsapp_msg: ADICIONADO
 --   • Todas as 15 tabelas verificadas e validadas contra HeidiSQL
 -- ============================================================
