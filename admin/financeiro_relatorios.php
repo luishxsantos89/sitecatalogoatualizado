@@ -72,19 +72,20 @@ require_once __DIR__ . '/includes/header.php';
     <?php endforeach; ?>
 </div>
 
-<!-- Gráfico Mensal -->
-<div class="card">
-    <div class="card-header"><h3><i class="fas fa-chart-line"></i> Fluxo Mensal - <?php echo $ano; ?></h3></div>
-    <div class="card-body">
-        <canvas id="chartMensal" height="100"></canvas>
+<!-- LINHA 1: 2 colunas -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;grid-auto-rows:420px;">
+    <!-- Gráfico Mensal -->
+    <div class="card" style="display:flex;flex-direction:column;">
+        <div class="card-header" style="flex-shrink:0;"><h3><i class="fas fa-chart-line"></i> Fluxo Mensal - <?php echo $ano; ?></h3></div>
+        <div class="card-body" style="flex:1;min-height:0;position:relative;padding:16px;">
+            <canvas id="chartMensal"></canvas>
+        </div>
     </div>
-</div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
     <!-- Tabela Mensal -->
-    <div class="card">
-        <div class="card-header"><h3><i class="fas fa-table"></i> Resumo por Mês</h3></div>
-        <div class="table-responsive">
+    <div class="card" style="display:flex;flex-direction:column;overflow:hidden;">
+        <div class="card-header" style="flex-shrink:0;"><h3><i class="fas fa-table"></i> Resumo por Mês</h3></div>
+        <div class="table-responsive" style="flex:1;overflow-y:auto;">
             <table class="table">
                 <thead><tr><th>Mês</th><th>Receitas</th><th>Despesas</th><th>Saldo</th></tr></thead>
                 <tbody>
@@ -108,11 +109,14 @@ require_once __DIR__ . '/includes/header.php';
             </table>
         </div>
     </div>
+</div>
 
+<!-- LINHA 2: 3 colunas -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;grid-auto-rows:400px;">
     <!-- Top Clientes -->
-    <div class="card">
-        <div class="card-header"><h3><i class="fas fa-trophy"></i> Principais Clientes <?php echo $ano; ?></h3></div>
-        <div class="card-body">
+    <div class="card" style="display:flex;flex-direction:column;overflow:hidden;">
+        <div class="card-header" style="flex-shrink:0;"><h3><i class="fas fa-trophy"></i> Principais Clientes <?php echo $ano; ?></h3></div>
+        <div class="card-body" style="flex:1;overflow-y:auto;">
             <?php if (empty($top_clientes)): ?>
             <div class="empty-state-sm">Nenhum dado encontrado</div>
             <?php else: ?>
@@ -125,13 +129,11 @@ require_once __DIR__ . '/includes/header.php';
             <?php endif; ?>
         </div>
     </div>
-</div>
 
-<!-- Categorias -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-    <div class="card">
-        <div class="card-header"><h3><i class="fas fa-chart-pie"></i> Despesas por Categoria</h3></div>
-        <div class="card-body">
+    <!-- Despesas por Categoria -->
+    <div class="card" style="display:flex;flex-direction:column;overflow:hidden;">
+        <div class="card-header" style="flex-shrink:0;"><h3><i class="fas fa-chart-pie"></i> Despesas por Categoria</h3></div>
+        <div class="card-body" style="flex:1;overflow-y:auto;">
             <?php if (empty($desp_cat)): ?>
             <div class="empty-state-sm">Nenhum dado</div>
             <?php else: ?>
@@ -154,9 +156,10 @@ require_once __DIR__ . '/includes/header.php';
         </div>
     </div>
 
-    <div class="card">
-        <div class="card-header"><h3><i class="fas fa-chart-pie"></i> Receitas por Categoria</h3></div>
-        <div class="card-body">
+    <!-- Receitas por Categoria -->
+    <div class="card" style="display:flex;flex-direction:column;overflow:hidden;">
+        <div class="card-header" style="flex-shrink:0;"><h3><i class="fas fa-chart-pie"></i> Receitas por Categoria</h3></div>
+        <div class="card-body" style="flex:1;overflow-y:auto;">
             <?php if (empty($rec_cat)): ?>
             <div class="empty-state-sm">Nenhum dado</div>
             <?php else: ?>
@@ -219,6 +222,7 @@ new Chart(ctx, {
     },
     options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { legend: { position: 'top' } },
         scales: {
             y: { ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } }

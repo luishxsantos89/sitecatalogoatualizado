@@ -104,14 +104,14 @@ if (!isset($current_page)) $current_page = basename($_SERVER['PHP_SELF'], '.php'
             <?php endif; ?>
 
             <div class="nav-divider"><span>Sistema</span></div>
-            <!-- Em fase de teste
+            
                 <a href="email.php" class="nav-link <?php echo active_class($current_page, 'email'); ?>">
                     <i class="fas fa-envelope"></i><span>Email</span>
                     <?php if ($emails_nao_lidos > 0): ?>
                     <span class="nav-badge"><?php echo $emails_nao_lidos; ?></span>
                     <?php endif; ?>
                 </a>
-            -->
+           
             <?php if (check_permission('admin')): ?>
             <a href="usuarios.php" class="nav-link <?php echo active_class($current_page, 'usuarios'); ?>">
                 <i class="fas fa-user-shield"></i><span>Usuários</span>

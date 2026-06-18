@@ -1,14 +1,16 @@
 <?php
 /**
- * SiteCatalogo2 - Página Principal (Catálogo Público)
+ * SiteCatalogo - Página Principal (Catálogo Público)
  */
 
 if (!file_exists(__DIR__ . '/config.php')) {
-    die('Sistema não instalado. Execute o SQL de instalação primeiro.');
+    header('Location: install/index.php');
+    exit;
 }
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/functions.php';
+
 
 session_check();
 
@@ -253,6 +255,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'ajax_cart') {
 // AJAX - Salvar orçamento do site
 if (isset($_POST['action']) && $_POST['action'] === 'salvar_orcamento') {
     header('Content-Type: application/json');
+    error_reporting(E_ALL);
+    ini_set('display_errors', 0);
     $carrinho_atual = $_SESSION['carrinho'] ?? [];
     if (empty($carrinho_atual)) {
         echo json_encode(['ok' => false, 'msg' => 'Carrinho vazio']);
@@ -260,12 +264,20 @@ if (isset($_POST['action']) && $_POST['action'] === 'salvar_orcamento') {
     }
     try {
         $codigo = 'ORC-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
+
+        // DEBUG: log to file
+        $debug_log = __DIR__ . '/debug_orcamento.log';
+        file_put_contents($debug_log, date('Y-m-d H:i:s') . ' - Iniciando orçamento\n', FILE_APPEND);
         $valor_produtos = 0;
         foreach ($carrinho_atual as $pid => $item) {
             $p = $item['preco_promocional'] > 0 ? $item['preco_promocional'] : $item['preco'];
             $valor_produtos += (float)$p * (int)$item['qtd'];
         }
         $valor_total = $valor_produtos;
+        file_put_contents($debug_log, date('Y-m-d H:i:s') . ' - Valor: ' . $valor_total . '
+', FILE_APPEND);
+        file_put_contents($debug_log, date('Y-m-d H:i:s') . ' - Valor: ' . $valor_total . '
+', FILE_APPEND);
 
         $cliente_id = null;
         $cli_nome  = trim($_POST['cliente_nome'] ?? '');
@@ -282,17 +294,27 @@ if (isset($_POST['action']) && $_POST['action'] === 'salvar_orcamento') {
         $whatsapp_empresa = get_config('whatsapp', '');
         $msg_conf = get_config('orcamento_whatsapp_msg', WHATSAPP_DEFAULT_MSG);
 
-        db()->prepare("INSERT INTO " . table('orcamentos') . " (codigo,cliente_id,cliente_nome,cliente_telefone,tipo_contato,status,valor_produtos,valor_servicos,desconto,valor_total,usuario_id) VALUES (?,?,?,?,?,?,?,?,?,?,NULL)")
-            ->execute([$codigo,$cliente_id,$cli_nome ?: 'Cliente do Site',$cli_tel,'whatsapp','novo',$valor_produtos,0,0,$valor_total]);
+        file_put_contents($debug_log, date('Y-m-d H:i:s') . ' - Preparando INSERT orcamentos
+', FILE_APPEND);
+        $stmt_orc = db()->prepare("INSERT INTO " . table('orcamentos') . " (codigo,cliente_id,cliente_nome,cliente_telefone,tipo_contato,status,valor_produtos,valor_servicos,desconto,valor_total,usuario_id) VALUES (?,?,?,?,?,?,?,?,?,?,NULL)");
+        file_put_contents($debug_log, date('Y-m-d H:i:s') . ' - Statement preparado
+', FILE_APPEND);
+        $stmt_orc->execute([$codigo,$cliente_id,$cli_nome ?: 'Cliente do Site',$cli_tel,'whatsapp','novo',$valor_produtos,0,0,$valor_total]);
+        file_put_contents($debug_log, date('Y-m-d H:i:s') . ' - INSERT orcamentos executado
+', FILE_APPEND);
 
         $orc_id = (int)db()->lastInsertId();
 
         foreach ($carrinho_atual as $pid => $item) {
             $preco = (float)($item['preco_promocional'] > 0 ? $item['preco_promocional'] : $item['preco']);
             $qtd = (int)$item['qtd'];
+            file_put_contents($debug_log, date('Y-m-d H:i:s') . ' - Inserindo item: ' . $item['nome'] . ' (qtd: ' . $qtd . ')
+', FILE_APPEND);
             db()->prepare("INSERT INTO " . table('orcamento_itens') . " (orcamento_id,produto_id,produto_nome,quantidade,unidade,preco_unitario,subtotal) VALUES (?,?,?,?,?,?,?)")
                 ->execute([$orc_id,$pid,$item['nome'],$qtd,$item['unidade']??'un',$preco,$preco*$qtd]);
         }
+        file_put_contents($debug_log, date('Y-m-d H:i:s') . ' - Todos itens inseridos
+', FILE_APPEND);
 
         $msg = $msg_conf . "\n\n";
         foreach ($carrinho_atual as $pid => $item) {
@@ -306,6 +328,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'salvar_orcamento') {
 
         echo json_encode(['ok' => true, 'codigo' => $codigo, 'whatsapp_link' => $wl, 'whatsapp_tel' => $whatsapp_empresa]);
     } catch (Exception $e) {
+        file_put_contents(__DIR__ . '/debug_orcamento.log', date('Y-m-d H:i:s') . ' - ERRO: ' . $e->getMessage() . '\n', FILE_APPEND);
         echo json_encode(['ok' => false, 'msg' => $e->getMessage()]);
     }
     exit;
@@ -325,7 +348,6 @@ if (isset($_GET['ajax_produtos'])) {
     $where_sql_aj = implode(' AND ', $where_aj);
 
     try {
-        $cnt = (int)db()->prepare("SELECT COUNT(*) FROM " . table('produtos') . " p WHERE {$where_sql_aj}")->execute($params_aj) ? db()->prepare("SELECT COUNT(*) FROM " . table('produtos') . " p WHERE {$where_sql_aj}") : null;
         $cnt_stmt = db()->prepare("SELECT COUNT(*) FROM " . table('produtos') . " p WHERE {$where_sql_aj}");
         $cnt_stmt->execute($params_aj);
         $total_aj = (int)$cnt_stmt->fetchColumn();
@@ -361,6 +383,7 @@ if (isset($_GET['ajax_produtos'])) {
             'cor'         => $cor,
         ]);
     } catch (Exception $e) {
+        file_put_contents(__DIR__ . '/debug_orcamento.log', date('Y-m-d H:i:s') . ' - ERRO: ' . $e->getMessage() . '\n', FILE_APPEND);
         echo json_encode(['ok' => false, 'msg' => $e->getMessage()]);
     }
     exit;
@@ -380,7 +403,8 @@ function get_banners_ativos(string $posicao, int $limit = 10): array {
               AND (
                   prazo_fixo = 1
                   OR (
-                      (data_inicio IS NULL OR data_inicio <= CURDATE())
+                      prazo_fixo = 0
+                      AND (data_inicio IS NULL OR data_inicio <= CURDATE())
                       AND (data_fim   IS NULL OR data_fim   >= CURDATE())
                   )
               )
@@ -2426,7 +2450,17 @@ function registrarOrcamento() {
     formData.append('cliente_tel', document.getElementById('orcTel').value.trim());
 
     fetch('/', { method: 'POST', body: formData })
-    .then(r => r.json())
+    .then(async r => {
+        const text = await r.text();
+        console.log('RAW RESPONSE:', text.substring(0, 500));
+        try {
+            return JSON.parse(text);
+        } catch(e) {
+            console.error('JSON parse error:', e);
+            console.error('Full response:', text);
+            throw new Error('Resposta não é JSON: ' + text.substring(0, 200));
+        }
+    })
     .then(d => {
         document.getElementById('orcLoading').style.display = 'none';
         if (d.ok) {
@@ -2444,10 +2478,10 @@ function registrarOrcamento() {
             alert('Erro: ' + (d.msg || 'Tente novamente'));
         }
     })
-    .catch(()=>{
+    .catch(err => {
         document.getElementById('orcLoading').style.display = 'none';
         document.getElementById('orcStep1').style.display = 'block';
-        alert('Erro de conexão. Tente novamente.');
+        alert('Erro: ' + err.message);
     });
 }
 
@@ -2673,16 +2707,19 @@ document.addEventListener('keydown', e => {
 
 <!-- ===== BANNERS POPUP ===== -->
 <?php foreach ($banners_popup as $bp):
-    $bp_id    = 'banner_popup_' . $bp['id'];
-    $bp_delay = (int)($bp['popup_delay'] ?? 0) * 1000;
-    $bp_fora  = in_array($bp['popup_fechar'] ?? 'botao', ['fora','ambos']) ? 'true' : 'false';
-    $bp_botao = in_array($bp['popup_fechar'] ?? 'botao', ['botao','ambos']) ? 'true' : 'false';
+    $bp_id       = 'banner_popup_' . $bp['id'];
+    $bp_delay    = (int)($bp['popup_delay']    ?? 0) * 1000;
+    $bp_fora     = in_array($bp['popup_fechar']  ?? 'botao', ['fora','ambos'])  ? 'true' : 'false';
+    $bp_botao    = in_array($bp['popup_fechar']  ?? 'botao', ['botao','ambos']) ? 'true' : 'false';
+    $bp_freq_max = (int)($bp['popup_freq_max']  ?? 0);   // 0 = ilimitado
+    $bp_interval = (int)($bp['popup_intervalo'] ?? 0);   // horas, 0 = sem restrição
+    $bp_lskey    = 'bp_' . $bp['id'];                    // chave localStorage
 ?>
 <div id="<?php echo $bp_id; ?>"
      style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:20px;">
     <div style="position:relative;max-width:600px;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4);animation:modalFadeIn .3s ease;">
         <?php if ($bp_botao === 'true'): ?>
-        <button onclick="fecharBannerPopup('<?php echo $bp_id; ?>')"
+        <button onclick="fecharBannerPopup('<?php echo $bp_id; ?>', <?php echo $bp['id']; ?>)"
                 style="position:absolute;top:10px;right:12px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:32px;height:32px;font-size:1.2rem;cursor:pointer;z-index:1;line-height:1;display:flex;align-items:center;justify-content:center;">&times;</button>
         <?php endif; ?>
         <?php if ($bp['link']): ?><a href="<?php echo sanitize($bp['link']); ?>"><?php endif; ?>
@@ -2700,24 +2737,61 @@ document.addEventListener('keydown', e => {
 </div>
 <script>
 (function(){
-    var pid = <?php echo json_encode($bp_id); ?>;
+    var pid      = <?php echo json_encode($bp_id); ?>;
+    var bid      = <?php echo $bp['id']; ?>;
+    var lsKey    = 'bp_' + bid;
+    var freqMax  = <?php echo $bp_freq_max; ?>;   // 0 = ilimitado
+    var interval = <?php echo $bp_interval; ?>;   // horas, 0 = sem restrição
     var fecharFora = <?php echo $bp_fora; ?>;
+    var delay    = <?php echo $bp_delay; ?>;
+
+    // Ler estado salvo
+    var now = Date.now();
+    var raw = null;
+    try { raw = JSON.parse(localStorage.getItem(lsKey) || 'null'); } catch(e){}
+    var exibicoes = raw ? (raw.count || 0) : 0;
+    var ultima    = raw ? (raw.ultima || 0) : 0;
+
+    // Verificar frequência máxima
+    if (freqMax > 0 && exibicoes >= freqMax) return;
+
+    // Verificar intervalo (em horas)
+    if (interval > 0 && ultima > 0) {
+        var horasPassadas = (now - ultima) / 3600000;
+        if (horasPassadas < interval) return;
+    }
+
+    // Não mostrar dentro de modal de produto aberto
+    if (window.location.search.indexOf('produto') !== -1) return;
+
     setTimeout(function(){
         var el = document.getElementById(pid);
         if (!el) return;
         el.style.display = 'flex';
+
+        // Registrar exibição
+        try {
+            localStorage.setItem(lsKey, JSON.stringify({ count: exibicoes + 1, ultima: now }));
+        } catch(e){}
+
         if (fecharFora) {
-            el.addEventListener('click', function(e){ if (e.target === el) fecharBannerPopup(pid); });
+            el.addEventListener('click', function(e){
+                if (e.target === el) fecharBannerPopup(pid, bid);
+            });
         }
-    }, <?php echo $bp_delay; ?>);
+    }, delay);
 })();
 </script>
 <?php endforeach; ?>
 <?php if (!empty($banners_popup)): ?>
 <script>
-function fecharBannerPopup(pid) {
+function fecharBannerPopup(pid, bid) {
     var el = document.getElementById(pid);
-    if (el) el.style.display = 'none';
+    if (el) {
+        el.style.opacity = '0';
+        el.style.transition = 'opacity .25s';
+        setTimeout(function(){ el.style.display = 'none'; el.style.opacity = ''; }, 250);
+    }
 }
 </script>
 <?php endif; ?>

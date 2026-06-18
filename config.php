@@ -1,7 +1,7 @@
 <?php
 /**
  * SiteCatalogo - Configuração
- * Gerado automaticamente pelo instalador em: <?= date('d/m/Y H:i') ?>
+ * Gerado automaticamente pelo instalador em: 18/06/2026 08:07
  * NÃO edite este arquivo manualmente a menos que saiba o que está fazendo.
  */
 
@@ -19,27 +19,18 @@ define('ASSETS_URL',  'http://sitecatalogo.test/assets/');
 define('UPLOADS_URL', 'http://sitecatalogo.test/uploads/');
 
 // ── Caminhos ────────────────────────────────────────────────────────
-if (!defined('ROOT_PATH')) {
-    define('ROOT_PATH', __DIR__);
-}
-
-if (!defined('UPLOADS_PATH')) {
-    define('UPLOADS_PATH', __DIR__ . '/uploads');
-}
+if (!defined('ROOT_PATH'))    define('ROOT_PATH',    __DIR__);
+if (!defined('UPLOADS_PATH')) define('UPLOADS_PATH', __DIR__ . '/uploads');
 
 // ── Segurança ───────────────────────────────────────────────────────
-define('SECRET_KEY', 'a07c5b5dbc9799ac531058879b5744c87250f3162e05757d4cc26fc1a9b86671');
+define('SECRET_KEY',   '56f12b82ce91b3989bf1f654f1cc8f79c15e11b088903e8457d16e4eeee98cb3');
 define('SESSION_NAME', 'sc2_session');
 
 // ── Sistema ─────────────────────────────────────────────────────────
-define('SITE_NAME', 'SiteCatalogo');
+define('SITE_NAME',        'SiteCatalogo');
 define('SITE_DESCRIPTION', '');
-define('WHATSAPP', '');
+define('WHATSAPP',         '');
+define('WHATSAPP_DEFAULT_MSG', 'Olá! Recebi seu orçamento e entrarei em contato em breve.');
 
-if (!defined('ADMIN_ITEMS_PER_PAGE')) {
-    define('ADMIN_ITEMS_PER_PAGE', 20);
-}
-
-if (!defined('ITEMS_PER_PAGE')) {
-    define('ITEMS_PER_PAGE', ADMIN_ITEMS_PER_PAGE);
-}
+if (!defined('ADMIN_ITEMS_PER_PAGE')) define('ADMIN_ITEMS_PER_PAGE', 20);
+if (!defined('ITEMS_PER_PAGE'))       define('ITEMS_PER_PAGE', ADMIN_ITEMS_PER_PAGE);

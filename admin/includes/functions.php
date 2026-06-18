@@ -1,6 +1,10 @@
 <?php
 /**
- * SiteCatalogo2 - Funções do Painel Admin
+ * SiteCatalogo - Funções do Painel Admin
+ * 
+ * Este arquivo carrega as funções da RAIZ e adiciona helpers específicos do admin.
+ * NÃO faz mais override de upload_file, uploads_url e delete_upload —
+ * pois as funções da RAIZ já apontam corretamente para admin/uploads/.
  */
 
 require_once dirname(dirname(dirname(__FILE__))) . '/includes/functions.php';
@@ -15,7 +19,7 @@ if (!is_logged_in()) {
 // Página atual para menu ativo
 $current_page = basename($_SERVER['PHP_SELF'], '.php');
 
-// Upload helper
+// Upload helper (wrapper que usa a função da RAIZ)
 function handle_upload(array $file, string $folder = 'produtos'): ?string {
     $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
     return upload_file($file, $folder, $allowed);

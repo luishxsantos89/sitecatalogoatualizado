@@ -84,14 +84,24 @@ function assets_url(string $path = ''): string {
     return rtrim($base, '/') . '/' . ltrim($path, '/');
 }
 
+/**
+ * Retorna a URL pública para um arquivo de upload.
+ * TODOS os uploads vão para /admin/uploads/ (centralizado)
+ */
 function uploads_url(string $path = ''): string {
-    if (empty($path)) return defined('UPLOADS_URL') ? UPLOADS_URL : '/uploads/';
-    $base = defined('UPLOADS_URL') ? UPLOADS_URL : '/uploads/';
-    return rtrim($base, '/') . '/' . ltrim($path, '/');
+    if (empty($path)) return '/admin/uploads/';
+    // Se já for URL completa, retorna como está
+    if (preg_match('/^https?:\/\//i', $path)) return $path;
+    $path = ltrim($path, '/');
+    return '/admin/uploads/' . $path;
 }
 
+/**
+ * Retorna o caminho físico para um arquivo de upload.
+ * TODOS os uploads ficam em admin/uploads/ (centralizado)
+ */
 function uploads_path(string $path = ''): string {
-    $base = defined('UPLOADS_PATH') ? UPLOADS_PATH : ROOT_PATH . '/uploads';
+    $base = __DIR__ . '/../admin/uploads';
     if (empty($path)) return $base;
     return rtrim($base, '/') . '/' . ltrim($path, '/');
 }
@@ -141,6 +151,9 @@ function slugify(string $text): string {
 
 // ==================== UPLOAD ====================
 
+/**
+ * Faz upload de arquivo. Salva SEMPRE em admin/uploads/ (centralizado)
+ */
 function upload_file(array $file, string $folder = 'produtos', array $allowed = ['jpg','jpeg','png','gif','webp']): ?string {
     if ($file['error'] !== UPLOAD_ERR_OK) return null;
     if ($file['size'] > 10 * 1024 * 1024) return null; // 10MB max
@@ -159,6 +172,9 @@ function upload_file(array $file, string $folder = 'produtos', array $allowed = 
     return null;
 }
 
+/**
+ * Apaga um arquivo de upload. Busca SEMPRE em admin/uploads/ (centralizado)
+ */
 function delete_upload(string $path): bool {
     $full = uploads_path($path);
     if (file_exists($full)) return unlink($full);

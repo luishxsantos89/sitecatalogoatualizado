@@ -9,6 +9,11 @@ define('ROOT_PATH', dirname(__DIR__));
 define('DB_NAME_FIXED', 'sitecatalogo');
 define('DB_PREFIX_FIXED', 'sc_');
 
+// Se já instalado, redireciona para o admin
+if (file_exists(ROOT_PATH . '/config.php') && !isset($_GET['force'])) {
+    header('Location: ../admin/login.php'); exit;
+}
+
 // ─── Funções auxiliares ───────────────────────────────────────────────
 
 function already_installed(): bool {
@@ -37,7 +42,12 @@ function test_db(string $host, string $user, string $pass): array {
 }
 
 function create_database(PDO $pdo, string $dbname): bool {
-    $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$dbname}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+    try {
+        // Tenta criar — no cPanel o banco já existe, então só faz USE
+        $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$dbname}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+    } catch (PDOException $e) {
+        // Sem permissão para criar (cPanel) — tenta só usar o existente
+    }
     $pdo->exec("USE `{$dbname}`");
     return true;
 }
@@ -50,62 +60,45 @@ function run_schema(PDO $pdo, string $admin_nome, string $admin_email, string $a
 
         // ── Tabelas ──────────────────────────────────────────────────
         $sql_tables = <<<SQL
-DROP TABLE IF EXISTS `sc_atividades_log`;
-DROP TABLE IF EXISTS `sc_financeiro_lancamentos`;
-DROP TABLE IF EXISTS `sc_financeiro_contas`;
-DROP TABLE IF EXISTS `sc_financeiro_categorias`;
-DROP TABLE IF EXISTS `sc_emails`;
-DROP TABLE IF EXISTS `sc_orcamento_itens`;
-DROP TABLE IF EXISTS `sc_orcamentos`;
-DROP TABLE IF EXISTS `sc_clientes`;
-DROP TABLE IF EXISTS `sc_produto_estoque`;
-DROP TABLE IF EXISTS `sc_produto_imagens`;
-DROP TABLE IF EXISTS `sc_produtos`;
-DROP TABLE IF EXISTS `sc_banners`;
-DROP TABLE IF EXISTS `sc_categorias`;
-DROP TABLE IF EXISTS `sc_configuracoes`;
-DROP TABLE IF EXISTS `sc_usuarios`;
-
 CREATE TABLE `sc_usuarios` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `nome` varchar(255) NOT NULL,
   `email` varchar(255) NOT NULL,
   `senha` varchar(255) NOT NULL,
   `avatar` varchar(255) DEFAULT NULL,
-  `nivel` enum('admin','gerente','atendente','vendedor') DEFAULT 'vendedor',
   `role` enum('admin','gerente','vendedor') DEFAULT 'vendedor',
   `status` enum('ativo','inativo','bloqueado') DEFAULT 'ativo',
   `ultimo_acesso` datetime DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `email` (`email`)
+  UNIQUE KEY `uk_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `sc_categorias` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `nome` varchar(255) NOT NULL,
   `slug` varchar(255) NOT NULL,
-  `descricao` text,
+  `descricao` text DEFAULT NULL,
   `imagem` varchar(255) DEFAULT NULL,
   `icone` varchar(100) DEFAULT 'category',
   `ordem` int DEFAULT 0,
   `ativo` tinyint(1) DEFAULT 1,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `slug` (`slug`)
+  UNIQUE KEY `uk_slug` (`slug`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `sc_produtos` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `categoria_id` int unsigned DEFAULT NULL,
   `nome` varchar(255) NOT NULL,
-  `slug` varchar(255) NOT NULL DEFAULT '',
-  `descricao` text,
+  `slug` varchar(255) NOT NULL,
+  `descricao` text DEFAULT NULL,
   `descricao_curta` varchar(500) DEFAULT NULL,
   `imagem_principal` varchar(255) DEFAULT NULL,
-  `imagens` text,
+  `imagens` text DEFAULT NULL,
   `preco` decimal(10,2) DEFAULT 0.00,
   `preco_promocional` decimal(10,2) DEFAULT NULL,
   `custo` decimal(10,2) DEFAULT NULL,
@@ -120,12 +113,12 @@ CREATE TABLE `sc_produtos` (
   `tags` varchar(500) DEFAULT NULL,
   `seo_title` varchar(255) DEFAULT NULL,
   `seo_description` varchar(500) DEFAULT NULL,
-  `caracteristicas` text,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `caracteristicas` text DEFAULT NULL,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `slug` (`slug`),
-  KEY `categoria_id` (`categoria_id`),
+  UNIQUE KEY `uk_slug` (`slug`),
+  KEY `idx_categoria` (`categoria_id`),
   CONSTRAINT `fk_produtos_categoria` FOREIGN KEY (`categoria_id`) REFERENCES `sc_categorias` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -134,9 +127,9 @@ CREATE TABLE `sc_produto_imagens` (
   `produto_id` int unsigned NOT NULL,
   `imagem` varchar(255) NOT NULL,
   `ordem` int DEFAULT 0,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `produto_id` (`produto_id`),
+  KEY `idx_produto` (`produto_id`),
   CONSTRAINT `fk_pimg_produto` FOREIGN KEY (`produto_id`) REFERENCES `sc_produtos` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -147,29 +140,48 @@ CREATE TABLE `sc_produto_estoque` (
   `quantidade` int DEFAULT 0,
   `quantidade_anterior` int DEFAULT 0,
   `motivo` varchar(255) DEFAULT NULL,
-  `observacoes` text,
   `usuario_id` int unsigned DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `observacoes` text DEFAULT NULL,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `produto_id` (`produto_id`)
+  KEY `idx_produto` (`produto_id`),
+  KEY `idx_tipo` (`tipo`),
+  KEY `idx_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `sc_clientes` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `nome` varchar(255) NOT NULL,
+  `nome_razaosocial` varchar(255) NOT NULL COMMENT 'Nome ou Razão Social',
+  `nome` varchar(255) NOT NULL DEFAULT '' COMMENT 'Alias para compatibilidade',
+  `tipo_pessoa` enum('fisica','juridica') DEFAULT 'fisica',
+  `cpf_cnpj` varchar(20) DEFAULT NULL,
+  `rg_ie` varchar(20) DEFAULT NULL,
   `email` varchar(255) DEFAULT NULL,
   `telefone` varchar(20) DEFAULT NULL,
-  `cpf_cnpj` varchar(20) DEFAULT NULL,
-  `endereco` varchar(255) DEFAULT NULL,
-  `cidade` varchar(100) DEFAULT NULL,
-  `estado` varchar(2) DEFAULT NULL,
+  `celular` varchar(20) DEFAULT NULL,
   `cep` varchar(10) DEFAULT NULL,
+  `endereco` varchar(255) DEFAULT NULL,
+  `numero` varchar(20) DEFAULT NULL,
+  `complemento` varchar(100) DEFAULT NULL,
+  `bairro` varchar(100) DEFAULT NULL,
+  `cidade` varchar(100) DEFAULT NULL,
+  `estado` char(2) DEFAULT NULL,
+  `observacoes` text DEFAULT NULL,
+  `categoria` varchar(50) DEFAULT 'cliente_final',
+  `foto` varchar(255) DEFAULT '',
+  `limite_credito` decimal(10,2) DEFAULT 0.00,
+  `saldo_devedor` decimal(10,2) DEFAULT 0.00,
+  `status` varchar(20) DEFAULT 'ativo',
   `senha` varchar(255) DEFAULT NULL,
-  `status` enum('ativo','inativo') DEFAULT 'ativo',
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `email_verificado` tinyint(1) DEFAULT 0,
+  `token_verificacao` varchar(100) DEFAULT NULL,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `email` (`email`)
+  KEY `idx_nome_razaosocial` (`nome_razaosocial`),
+  KEY `idx_nome` (`nome`),
+  KEY `idx_email` (`email`),
+  KEY `idx_celular` (`celular`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `sc_orcamentos` (
@@ -180,11 +192,11 @@ CREATE TABLE `sc_orcamentos` (
   `cliente_email` varchar(255) DEFAULT NULL,
   `cliente_telefone` varchar(20) DEFAULT NULL,
   `cliente_cpf_cnpj` varchar(20) DEFAULT NULL,
-  `cliente_cidade` varchar(150) DEFAULT NULL,
+  `cliente_cidade` varchar(255) DEFAULT NULL,
   `tipo_contato` varchar(30) DEFAULT 'whatsapp',
   `forma_pagamento` varchar(255) DEFAULT NULL,
   `status` enum('novo','pendente','em_analise','respondido','aprovado','rejeitado','cancelado') DEFAULT 'novo',
-  `observacoes` text,
+  `observacoes` text DEFAULT NULL,
   `data_entrega` date DEFAULT NULL,
   `tabela_preco` varchar(50) DEFAULT 'padrao',
   `valor_produtos` decimal(10,2) DEFAULT 0.00,
@@ -192,29 +204,30 @@ CREATE TABLE `sc_orcamentos` (
   `desconto` decimal(10,2) DEFAULT 0.00,
   `valor_total` decimal(10,2) DEFAULT 0.00,
   `usuario_id` int unsigned DEFAULT NULL,
-  `atendente_fixo` tinyint(1) DEFAULT 0,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `codigo` (`codigo`),
-  KEY `status` (`status`),
-  KEY `cliente_id` (`cliente_id`)
+  UNIQUE KEY `uk_codigo` (`codigo`),
+  KEY `idx_status` (`status`),
+  KEY `idx_cliente` (`cliente_id`),
+  KEY `idx_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `sc_orcamento_itens` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `orcamento_id` int unsigned NOT NULL,
   `produto_id` int unsigned DEFAULT NULL,
-  `nome` varchar(255) NOT NULL,
+  `produto_nome` varchar(255) NOT NULL,
   `sku` varchar(100) DEFAULT NULL,
   `quantidade` int DEFAULT 1,
+  `unidade` varchar(20) DEFAULT 'un',
   `preco_unitario` decimal(10,2) DEFAULT 0.00,
-  `desconto` decimal(10,2) DEFAULT 0.00,
-  `total` decimal(10,2) DEFAULT 0.00,
-  `observacoes` text,
+  `subtotal` decimal(10,2) DEFAULT 0.00,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `orcamento_id` (`orcamento_id`),
-  CONSTRAINT `fk_oitens_orcamento` FOREIGN KEY (`orcamento_id`) REFERENCES `sc_orcamentos` (`id`) ON DELETE CASCADE
+  KEY `idx_orcamento` (`orcamento_id`),
+  KEY `idx_produto` (`produto_id`),
+  CONSTRAINT `fk_itens_orcamento` FOREIGN KEY (`orcamento_id`) REFERENCES `sc_orcamentos` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `sc_banners` (
@@ -226,28 +239,33 @@ CREATE TABLE `sc_banners` (
   `posicao` varchar(50) DEFAULT 'slide',
   `ordem` int DEFAULT 0,
   `ativo` tinyint(1) DEFAULT 1,
-  `popup_delay` int NOT NULL DEFAULT 0,
-  `popup_fechar` varchar(20) NOT NULL DEFAULT 'botao',
-  `prazo_fixo` tinyint(1) NOT NULL DEFAULT 1,
+  `popup_delay` int DEFAULT 0,
+  `popup_fechar` varchar(20) DEFAULT 'botao',
+  `popup_freq_max` int DEFAULT 0,
+  `popup_intervalo` int DEFAULT 0,
+  `prazo_fixo` tinyint(1) DEFAULT 1,
   `data_inicio` date DEFAULT NULL,
   `data_fim` date DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_posicao_ativo` (`posicao`, `ativo`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `sc_configuracoes` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `chave` varchar(100) NOT NULL,
-  `valor` text,
+  `valor` text DEFAULT NULL,
   `descricao` varchar(255) DEFAULT NULL,
   `grupo` varchar(50) DEFAULT 'geral',
-  `tipo` enum('text','textarea','number','select','color','file','boolean') DEFAULT 'text',
-  `opcoes` text,
+  `tipo` enum('text','textarea','file','select','number','color') DEFAULT 'text',
+  `opcoes` text DEFAULT NULL,
   `ordem` int DEFAULT 0,
   `ativo` tinyint(1) DEFAULT 1,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `chave` (`chave`)
+  UNIQUE KEY `uk_chave` (`chave`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `sc_financeiro_categorias` (
@@ -270,7 +288,7 @@ CREATE TABLE `sc_financeiro_contas` (
   `saldo_atual` decimal(10,2) DEFAULT 0.00,
   `cor` varchar(20) DEFAULT '#3b82f6',
   `ativo` tinyint(1) DEFAULT 1,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -291,23 +309,32 @@ CREATE TABLE `sc_financeiro_lancamentos` (
   `parcelas` int DEFAULT 1,
   `parcela_atual` int DEFAULT 1,
   `grupo_parcelas` varchar(36) DEFAULT NULL,
-  `observacoes` text,
+  `observacoes` text DEFAULT NULL,
   `comprovante` varchar(255) DEFAULT NULL,
   `usuario_id` int unsigned DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_tipo` (`tipo`),
+  KEY `idx_status` (`status`),
+  KEY `idx_vencimento` (`data_vencimento`),
+  KEY `idx_categoria` (`categoria_id`),
+  KEY `idx_conta` (`conta_id`),
+  KEY `idx_cliente` (`cliente_id`),
+  KEY `idx_orcamento` (`orcamento_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `sc_atividades_log` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `acao` varchar(50) DEFAULT NULL,
   `tabela` varchar(50) DEFAULT NULL,
-  `descricao` text,
+  `descricao` text DEFAULT NULL,
   `usuario_id` int unsigned DEFAULT NULL,
   `ip_address` varchar(45) DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_usuario` (`usuario_id`),
+  KEY `idx_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `sc_emails` (
@@ -316,16 +343,17 @@ CREATE TABLE `sc_emails` (
   `remetente_email` varchar(255) DEFAULT '',
   `destinatario_email` varchar(255) DEFAULT '',
   `assunto` varchar(500) DEFAULT '',
-  `corpo` text,
+  `corpo` text DEFAULT NULL,
   `pasta` enum('inbox','sent','drafts','trash','spam','archive') DEFAULT 'inbox',
   `status` enum('nao_lido','lido','respondido','encaminhado') DEFAULT 'nao_lido',
   `starred` tinyint(1) DEFAULT 0,
   `data_envio` datetime DEFAULT CURRENT_TIMESTAMP,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_pasta` (`pasta`),
+  KEY `idx_status` (`status`),
+  KEY `idx_starred` (`starred`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-SET FOREIGN_KEY_CHECKS = 1;
 SQL;
 
         // Executar tabela por tabela
@@ -335,7 +363,7 @@ SQL;
 
         // ── Usuário admin ────────────────────────────────────────────
         $hash = password_hash($admin_senha, PASSWORD_BCRYPT);
-        $st = $pdo->prepare("INSERT INTO sc_usuarios (nome, email, senha, nivel, role, status) VALUES (?, ?, ?, 'admin', 'admin', 'ativo')");
+        $st = $pdo->prepare("INSERT INTO sc_usuarios (nome, email, senha, role, status) VALUES (?, ?, ?, 'admin', 'ativo')");
         $st->execute([$admin_nome, $admin_email, $hash]);
 
         // ── Configurações padrão ─────────────────────────────────────
@@ -344,8 +372,9 @@ SQL;
             ['site_descricao',       '',              'Descrição do Site',             'geral',    'text',   2],
             ['whatsapp',             '',              'WhatsApp de Contato',           'contato',  'text',   1],
             ['email_contato',        $admin_email,    'E-mail de Contato',             'contato',  'text',   2],
-            ['mostrar_preco',        '1',             'Mostrar Preços',                'geral',    'select', 3],
-            ['moeda',                'BRL',           'Moeda',                         'geral',    'select', 4],
+            ['orcamento_whatsapp_msg', 'Olá! Recebi seu orçamento e entrarei em contato em breve.', 'Mensagem padrão WhatsApp orçamento', 'contato', 'textarea', 3],
+            ['mostrar_preco',        '1',             'Mostrar Preços',                'geral',    'select', 4],
+            ['moeda',                'BRL',           'Moeda',                         'geral',    'select', 5],
             ['facebook_url',         '',              'Facebook',                      'social',   'text',   1],
             ['instagram_url',        '',              'Instagram',                     'social',   'text',   2],
             ['youtube_url',          '',              'YouTube',                       'social',   'text',   4],
@@ -397,11 +426,12 @@ SQL;
 
 function generate_config(string $host, string $user, string $pass, string $site_url): string {
     $secret = bin2hex(random_bytes(32));
+    $date   = date('d/m/Y H:i');
     return <<<PHP
 <?php
 /**
  * SiteCatalogo - Configuração
- * Gerado automaticamente pelo instalador em: <?= date('d/m/Y H:i') ?>
+ * Gerado automaticamente pelo instalador em: {$date}
  * NÃO edite este arquivo manualmente a menos que saiba o que está fazendo.
  */
 
@@ -419,8 +449,8 @@ define('ASSETS_URL',  '{$site_url}/assets/');
 define('UPLOADS_URL', '{$site_url}/uploads/');
 
 // ── Caminhos ────────────────────────────────────────────────────────
-define('ROOT_PATH',    __DIR__);
-define('UPLOADS_PATH', __DIR__ . '/uploads');
+if (!defined('ROOT_PATH'))    define('ROOT_PATH',    __DIR__);
+if (!defined('UPLOADS_PATH')) define('UPLOADS_PATH', __DIR__ . '/uploads');
 
 // ── Segurança ───────────────────────────────────────────────────────
 define('SECRET_KEY',   '{$secret}');
@@ -430,7 +460,10 @@ define('SESSION_NAME', 'sc2_session');
 define('SITE_NAME',        'SiteCatalogo');
 define('SITE_DESCRIPTION', '');
 define('WHATSAPP',         '');
-define('ADMIN_ITEMS_PER_PAGE', 20);
+define('WHATSAPP_DEFAULT_MSG', 'Olá! Recebi seu orçamento e entrarei em contato em breve.');
+
+if (!defined('ADMIN_ITEMS_PER_PAGE')) define('ADMIN_ITEMS_PER_PAGE', 20);
+if (!defined('ITEMS_PER_PAGE'))       define('ITEMS_PER_PAGE', ADMIN_ITEMS_PER_PAGE);
 PHP;
 }
 
@@ -634,7 +667,41 @@ input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15);}
         <?php elseif ($step === 2): ?>
         <!-- ── STEP 2: Dados do banco ───────────────────────────── -->
         <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:6px;color:#0f172a;">Configurar Banco de Dados</h3>
-        <p style="color:#6b7280;font-size:0.875rem;margin-bottom:20px;">O banco <strong>sitecatalogo</strong> será criado automaticamente.</p>
+        <p style="color:#6b7280;font-size:0.875rem;margin-bottom:16px;">O banco <strong>sitecatalogo</strong> será criado automaticamente se o usuário tiver permissão. No cPanel geralmente você cria o banco antes.</p>
+
+        <!-- Guia cPanel colapsável -->
+        <details style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:20px;overflow:hidden;">
+            <summary style="padding:12px 16px;cursor:pointer;font-weight:600;font-size:0.875rem;color:#374151;display:flex;align-items:center;gap:8px;user-select:none;">
+                <i class="fas fa-question-circle" style="color:#3b82f6;"></i>
+                Usando cPanel (Hostgator, Hostinger, Locaweb…)? Clique para ver o guia
+            </summary>
+            <div style="padding:0 16px 16px;font-size:0.825rem;color:#374151;border-top:1px solid #e2e8f0;margin-top:0;">
+                <p style="margin:12px 0 8px;font-weight:700;color:#0f172a;">📋 Passo a passo para criar o banco no cPanel:</p>
+                <ol style="padding-left:18px;line-height:2;">
+                    <li>Acesse o cPanel da sua hospedagem (geralmente <code>seudominio.com.br/cpanel</code>)</li>
+                    <li>Vá em <strong>Bancos de Dados MySQL</strong> (ou <em>MySQL® Databases</em>)</li>
+                    <li>Em <strong>"Criar novo banco"</strong>, digite <code>sitecatalogo</code> e clique em <strong>Criar</strong><br>
+                        <span style="color:#9ca3af;">⚠️ O cPanel geralmente prefixa com seu usuário: ex. <code>usuario_sitecatalogo</code> — use esse nome completo no campo DB_NAME.</span>
+                    </li>
+                    <li>Em <strong>"Usuários MySQL"</strong>, crie um usuário ou use um existente</li>
+                    <li>Associe o usuário ao banco em <strong>"Adicionar usuário ao banco"</strong> → marque <strong>Todos os privilégios</strong></li>
+                    <li>Volte aqui e preencha os campos abaixo com os dados criados</li>
+                </ol>
+                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-top:12px;">
+                    <strong style="color:#92400e;"><i class="fas fa-lightbulb"></i> Onde encontro o Host?</strong>
+                    <ul style="padding-left:16px;margin-top:6px;line-height:1.8;color:#78350f;">
+                        <li><strong>Hostgator / Locaweb / KingHost:</strong> use <code>localhost</code></li>
+                        <li><strong>Hostinger:</strong> use <code>localhost</code> (ou veja em <em>Banco de dados → Detalhes</em>)</li>
+                        <li><strong>Outros:</strong> procure em <em>Bancos de dados → Detalhes do servidor MySQL</em> no cPanel</li>
+                        <li><strong>Localhost (Laragon/XAMPP):</strong> use <code>localhost</code></li>
+                    </ul>
+                </div>
+                <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;margin-top:10px;color:#15803d;">
+                    <strong><i class="fas fa-info-circle"></i> Nome do banco no cPanel:</strong><br>
+                    Se o cPanel criar como <code>usuario_sitecatalogo</code>, use exatamente esse nome completo no campo Usuário e o banco será referenciado corretamente. O instalador tentará criar o banco — se já existir, apenas usará o existente.
+                </div>
+            </div>
+        </details>
 
         <form method="POST" action="?step=2">
             <div class="form-group">
@@ -644,11 +711,11 @@ input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15);}
                     <input type="text" name="db_host" value="<?= htmlspecialchars($_POST['db_host'] ?? $suggested_host) ?>" placeholder="localhost" required>
                 </div>
                 <div style="margin-top:6px;font-size:0.78rem;color:#9ca3af;">
-                    💡 Hostgator/Hostinger: geralmente <code>localhost</code>. Em alguns planos: <code>mysql.seudominio.com.br</code>
+                    💡 Na maioria das hospedagens é <code>localhost</code>. Veja o guia acima se tiver dúvida.
                 </div>
             </div>
             <div class="form-group">
-                <label>Usuário do banco</label>
+                <label>Usuário do banco <span class="hint">— no cPanel: <code>usuario_seuusuario</code></span></label>
                 <div class="input-icon">
                     <i class="fas fa-user"></i>
                     <input type="text" name="db_user" value="<?= htmlspecialchars($_POST['db_user'] ?? '') ?>" placeholder="root" required>

@@ -1,6 +1,6 @@
 <?php
 /**
- * SiteCatalogo2 - Estoque
+ * SiteCatalogo2 - Estoque (Controle de Estoque)
  */
 require_once __DIR__ . '/includes/functions.php';
 $page_title = 'Estoque';
@@ -45,7 +45,7 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Normalizar cabeçalho
         $cabecalho = array_map(function($h) {
-            return strtolower(trim(str_replace([' ', '_', '-'], '', \mb_convert_encoding($h, 'UTF-8', 'UTF-8'))));
+            return strtolower(trim(str_replace([' ', '_', '-'], '', mb_convert_encoding($h, 'UTF-8', 'UTF-8'))));
         }, $cabecalho);
 
         // Mapear colunas (somente campos relacionados ao estoque)
@@ -155,28 +155,40 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ========== DOWNLOAD MODELO DE PLANILHA DE ESTOQUE ==========
-if ($action === 'download_modelo') {
+// ========== EXPORTAR ESTOQUE ==========
+if ($action === 'exportar') {
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="modelo_estoque.csv"');
+    header('Content-Disposition: attachment; filename="estoque_' . date('Y-m-d') . '.csv"');
 
     $output = fopen('php://output', 'w');
     fputcsv($output, [
-        'SKU', 'Nome', 'Quantidade Estoque', 'Estoque Mínimo', 'Motivo', 'Observações'
+        'SKU', 'Nome', 'Quantidade Estoque', 'Estoque Mínimo', 'Categoria', 'Unidade'
     ], ';');
 
-    fputcsv($output, [
-        'CV-001',
-        'Cartão de Visita Couchê 250g',
-        '120',
-        '10',
-        'ajuste_inventario',
-        'Contagem mensal'
-    ], ';');
+    try {
+        $stmt_exp = db()->query("
+            SELECT p.sku, p.nome, p.quantidade_estoque, p.estoque_minimo, p.unidade, c.nome as categoria_nome
+            FROM " . table('produtos') . " p
+            LEFT JOIN " . table('categorias') . " c ON p.categoria_id = c.id
+            ORDER BY p.nome
+        ");
+        foreach ($stmt_exp->fetchAll() as $p) {
+            fputcsv($output, [
+                $p['sku'] ?? '',
+                $p['nome'],
+                (int)$p['quantidade_estoque'],
+                (int)$p['estoque_minimo'],
+                $p['categoria_nome'] ?? '',
+                $p['unidade'] ?? 'un',
+            ], ';');
+        }
+    } catch (Exception $e) {}
 
     fclose($output);
     exit;
 }
+
+
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'movimentar') {
     $pid  = (int)($_POST['produto_id'] ?? 0);
@@ -198,7 +210,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'movimen
             $ant  = (int)$p['quantidade_estoque'];
             $nova = $tipo === 'entrada' ? $ant + $qtd : max(0, $ant - $qtd);
 
-            // UPDATE principal — fora de try/catch para não engolir erro real
             $upd = db()->prepare("UPDATE " . table('produtos') . " SET quantidade_estoque = ? WHERE id = ?");
             $upd->execute([$nova, $pid]);
 
@@ -236,8 +247,7 @@ $total = (int)$stmt_c->fetchColumn();
 
 $pagination = paginate($total, $page, 20);
 
-// Listar produtos — usar ORDER BY p.nome para evitar erro em bancos sem essa coluna indexada
-// Re-ordenação por quantidade_estoque é feita em PHP abaixo
+// Listar produtos
 $stmt = db()->prepare(
     "SELECT p.*, c.nome as categoria_nome
      FROM " . table('produtos') . " p
@@ -249,10 +259,8 @@ $stmt = db()->prepare(
 $stmt->execute($params);
 $produtos = $stmt->fetchAll();
 
-// Não reordenar em PHP — ORDER BY já faz isso no banco
-
-
 // Histórico recente
+$historico = [];
 try {
     $historico = db()->query("SELECT e.id, e.produto_id, e.quantidade, p.nome as produto_nome FROM " . table('produto_estoque') . " e LEFT JOIN " . table('produtos') . " p ON e.produto_id = p.id ORDER BY e.id DESC LIMIT 15")->fetchAll();
 } catch(Exception $e) { $historico = []; }
@@ -264,6 +272,7 @@ require_once __DIR__ . '/includes/header.php';
     <h1><i class="fas fa-warehouse"></i> Controle de Estoque</h1>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button onclick="abrirModalImportar()" class="btn btn-success"><i class="fas fa-file-excel"></i> Importar Planilha</button>
+        <a href="estoque.php?action=exportar" class="btn btn-outline"><i class="fas fa-file-export"></i> Exportar Planilha</a>
     </div>
 </div>
 
@@ -276,12 +285,12 @@ require_once __DIR__ . '/includes/header.php';
         <p style="color:var(--gray-500);font-size:0.875rem;margin-bottom:20px;">Envie um CSV, XLS ou XLSX com SKU/Nome do produto e a nova quantidade de estoque (e/ou estoque mínimo).</p>
 
         <div style="margin-bottom:16px;">
-            <a href="estoque.php?action=download_modelo" class="btn btn-outline btn-sm" style="font-size:0.8125rem;">
+            <a href="includes/estoque.csv" download class="btn btn-outline btn-sm" style="font-size:0.8125rem;">
                 <i class="fas fa-download"></i> Baixar modelo de planilha
             </a>
         </div>
 
-        <div id="dropZone" 
+        <div id="dropZone"
              style="border:2px dashed var(--gray-300);border-radius:var(--radius);padding:40px 20px;text-align:center;transition:all 0.2s;cursor:pointer;background:var(--gray-50);"
              ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='var(--primary-light)';"
              ondragleave="this.style.borderColor='var(--gray-300)';this.style.background='var(--gray-50)';"
@@ -445,6 +454,9 @@ function abrirMov(id, nome) {
     document.getElementById('movProdNome').value = nome;
     document.getElementById('modalMov').style.display = 'flex';
 }
+function fecharModalMov() {
+    document.getElementById('modalMov').style.display = 'none';
+}
 
 // ===== IMPORTAÇÃO DE ESTOQUE POR PLANILHA =====
 let arquivoSelecionado = null;
@@ -532,7 +544,6 @@ function enviarPlanilha() {
             html += `</div>`;
             resultado.innerHTML = html;
 
-            // Recarregar página após 2 segundos se deu certo
             if (d.atualizados > 0) {
                 setTimeout(() => window.location.reload(), 2000);
             }
@@ -557,6 +568,7 @@ document.getElementById('modalImportar').addEventListener('click', function(e) {
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
         fecharModalImportar();
+        fecharModalMov();
     }
 });
 </script>

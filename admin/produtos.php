@@ -1,9 +1,23 @@
 <?php
 /**
- * SiteCatalogo2 - Produtos (CRUD completo) + Importação por Planilha
+ * SiteCatalogo2 - Produtos (CRUD completo) + Importação/Exportação por Planilha
  */
 require_once __DIR__ . '/includes/functions.php';
 $page_title = 'Produtos';
+
+// ========== HELPER: URL CORRETA PARA UPLOADS ==========
+// Garante que as imagens apontem para /admin/uploads/ corretamente
+if (!function_exists('produto_imagem_url')) {
+    function produto_imagem_url(?string $caminho): string {
+        if (empty($caminho)) return '';
+        // Se já for URL completa, retorna como está
+        if (preg_match('/^https?:\/\//i', $caminho)) return $caminho;
+        // Remove barras duplicadas e garante caminho correto
+        $caminho = ltrim($caminho, '/');
+        return '/admin/uploads/' . $caminho;
+    }
+}
+
 
 $action = $_GET['action'] ?? 'list';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -54,9 +68,9 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $colunas_esperadas = [
             'nome' => ['nome', 'produto', 'descricao', 'titulo'],
             'sku' => ['sku', 'codigo', 'referencia', 'ref'],
-            'preco' => ['preco', 'valor', 'precovenda', 'precovenda'],
+            'preco' => ['preco', 'valor', 'precovenda'],
             'preco_promocional' => ['precopromocional', 'promocional', 'precopromo', 'oferta'],
-            'custo' => ['custo', 'precocusto', 'custo'],
+            'custo' => ['custo', 'precocusto'],
             'quantidade_estoque' => ['quantidadeestoque', 'estoque', 'qtd', 'quantidade', 'qtdestoque'],
             'estoque_minimo' => ['estoqueminimo', 'minimo', 'estmin'],
             'categoria_id' => ['categoriaid', 'categoria', 'cat', 'idcategoria'],
@@ -73,15 +87,12 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         function baixarImagemWebp(string $url): ?string {
             if (empty(trim($url))) return null;
 
-            // Detectar se é URL http/https ou caminho local
             $is_url = preg_match('/^https?:\/\//i', $url);
-            if (!$is_url) return null; // Apenas URLs externas por segurança
+            if (!$is_url) return null;
 
-            // Criar pasta uploads/produtos se não existir
             $upload_dir = __DIR__ . '/uploads/produtos/';
             if (!is_dir($upload_dir)) @mkdir($upload_dir, 0755, true);
 
-            // Baixar imagem
             $ctx = stream_context_create([
                 'http' => [
                     'timeout'    => 15,
@@ -94,15 +105,12 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $raw = @file_get_contents($url, false, $ctx);
             if (!$raw || strlen($raw) < 100) return null;
 
-            // Criar imagem GD
             $img = @imagecreatefromstring($raw);
             if (!$img) return null;
 
-            // Nome único em WebP
             $nome_arquivo = 'imp_' . uniqid() . '.webp';
             $caminho_full = $upload_dir . $nome_arquivo;
 
-            // Salvar como WebP com qualidade 82
             $ok = @imagewebp($img, $caminho_full, 82);
             imagedestroy($img);
 
@@ -129,7 +137,6 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         while (($dados = fgetcsv($handle, 0, $delimitador)) !== false) {
             $linha_num++;
 
-            // Pular linhas vazias
             if (empty(array_filter($dados, 'trim'))) continue;
 
             $nome = trim($dados[$map['nome']] ?? '');
@@ -138,7 +145,6 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 continue;
             }
 
-            // Converter encoding se necessário
             $nome = mb_convert_encoding($nome, 'UTF-8', 'UTF-8');
 
             $sku = isset($map['sku']) ? trim($dados[$map['sku']]) : '';
@@ -154,7 +160,6 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $ativo = isset($map['ativo']) ? (in_array(strtolower(trim($dados[$map['ativo']])), ['1', 'sim', 's', 'yes', 'ativo', 'true']) ? 1 : 0) : 1;
             $destaque = isset($map['destaque']) ? (in_array(strtolower(trim($dados[$map['destaque']])), ['1', 'sim', 's', 'yes', 'destaque', 'true']) ? 1 : 0) : 0;
 
-            // Processar imagem por URL → converte e salva como WebP local
             $imagem_importada = null;
             if (isset($map['imagem_url']) && !empty(trim($dados[$map['imagem_url']] ?? ''))) {
                 $img_url = trim($dados[$map['imagem_url']]);
@@ -166,24 +171,32 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Resolver categoria
             $categoria_id = null;
             if (isset($map['categoria_id']) && !empty($dados[$map['categoria_id']])) {
                 $cat_valor = trim($dados[$map['categoria_id']]);
-                if (is_numeric($cat_valor)) {
-                    $categoria_id = (int)$cat_valor;
-                } else {
-                    // Buscar por nome
+                if (is_numeric($cat_valor) && (int)$cat_valor > 0) {
+                    // Verificar se a categoria existe no banco
+                    $stmt_check = db()->prepare("SELECT id FROM " . table('categorias') . " WHERE id = ? LIMIT 1");
+                    $stmt_check->execute([(int)$cat_valor]);
+                    if ($stmt_check->fetchColumn()) {
+                        $categoria_id = (int)$cat_valor;
+                    } else {
+                        $resultado['erros'][] = "Linha {$linha_num}: categoria ID '{$cat_valor}' não encontrada no banco";
+                    }
+                } elseif (!is_numeric($cat_valor)) {
                     $stmt_cat = db()->prepare("SELECT id FROM " . table('categorias') . " WHERE nome = ? AND ativo = 1 LIMIT 1");
                     $stmt_cat->execute([$cat_valor]);
                     $cat_id = $stmt_cat->fetchColumn();
-                    if ($cat_id) $categoria_id = (int)$cat_id;
+                    if ($cat_id) {
+                        $categoria_id = (int)$cat_id;
+                    } else {
+                        $resultado['erros'][] = "Linha {$linha_num}: categoria '{$cat_valor}' não encontrada";
+                    }
                 }
             }
 
             $slug = slugify($nome);
 
-            // Verificar se já existe por SKU ou nome
             $existente = null;
             if (!empty($sku)) {
                 $stmt_ex = db()->prepare("SELECT id FROM " . table('produtos') . " WHERE sku = ? LIMIT 1");
@@ -197,7 +210,11 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if ($existente) {
-                // Atualizar
+                // Garantir que categoria_id seja NULL se inválido
+                if ($categoria_id !== null && $categoria_id <= 0) {
+                    $categoria_id = null;
+                }
+
                 $sql_update = "UPDATE " . table('produtos') . " SET 
                     nome = ?, slug = ?, descricao = ?, descricao_curta = ?, 
                     preco = ?, preco_promocional = ?, custo = ?, 
@@ -209,7 +226,6 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $quantidade_estoque, $estoque_minimo, $unidade,
                     $categoria_id, $tags, $ativo, $destaque
                 ];
-                // Só atualiza imagem se veio uma nova
                 if ($imagem_importada) {
                     $sql_update .= ", imagem_principal = ?";
                     $params_upd[] = $imagem_importada;
@@ -219,8 +235,12 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 db()->prepare($sql_update)->execute($params_upd);
                 $resultado['atualizados']++;
             } else {
-                // Inserir novo
                 $slug = unique_slug('produtos', $slug);
+                // Garantir que categoria_id seja NULL se inválido
+                if ($categoria_id !== null && $categoria_id <= 0) {
+                    $categoria_id = null;
+                }
+
                 db()->prepare("INSERT INTO " . table('produtos') . " 
                     (nome, slug, sku, descricao, descricao_curta, preco, preco_promocional, custo,
                      quantidade_estoque, estoque_minimo, unidade, categoria_id, tags, ativo, destaque,
@@ -241,7 +261,15 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $resultado['msg'] = "Importação concluída! {$resultado['importados']} novo(s), {$resultado['atualizados']} atualizado(s).";
 
         if (!empty($resultado['erros'])) {
-            $resultado['msg'] .= " " . count($resultado['erros']) . " erro(s) encontrado(s).";
+            $resultado['msg'] .= " " . count($resultado['erros']) . " aviso(s)/erro(s) encontrado(s).";
+        }
+
+        // Se teve erros de categoria, adicionar dica
+        $erros_categoria = array_filter($resultado['erros'], function($e) {
+            return stripos($e, 'categoria') !== false;
+        });
+        if (!empty($erros_categoria)) {
+            $resultado['msg'] .= " Dica: deixe a coluna 'Categoria ID' em branco ou use um ID/nome válido.";
         }
 
         echo json_encode($resultado);
@@ -253,40 +281,7 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ========== DOWNLOAD MODELO ==========
-if ($action === 'download_modelo') {
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="modelo_produtos.csv"');
 
-    $output = fopen('php://output', 'w');
-    fputcsv($output, [
-        'Nome', 'SKU', 'Preço', 'Preço Promocional', 'Custo',
-        'Quantidade Estoque', 'Estoque Mínimo', 'Categoria ID',
-        'Unidade', 'Descrição Curta', 'Descrição', 'Tags', 'Ativo', 'Destaque', 'Imagem URL'
-    ], ';');
-
-    // Linha de exemplo
-    fputcsv($output, [
-        'Cartão de Visita Couchê 250g',
-        'CV-001',
-        '120,00',
-        '99,90',
-        '45,00',
-        '100',
-        '10',
-        '1',
-        'un',
-        'Cartão de visita em couchê 250g com verniz localizado',
-        'Cartão de visita premium em papel couchê 250g. Acabamento com verniz localizado frente. Medida 9x5cm.',
-        'cartão, visita, couchê, gráfica',
-        '1',
-        '0',
-        'https://exemplo.com/imagem-produto.jpg'
-    ], ';');
-
-    fclose($output);
-    exit;
-}
 
 // ========== EXPORTAR PRODUTOS EM PLANILHA ==========
 if ($action === 'exportar') {
@@ -334,9 +329,8 @@ if ($action === 'exportar') {
 
 /* =========================
    Processar formulário normal (SALVAR/EDITAR PRODUTO)
-   CORREÇÃO: Verificar se é POST e NÃO é uma das actions especiais
    ========================= */
-$special_actions = ['importar_planilha', 'download_modelo', 'exportar', 'delete'];
+$special_actions = ['importar_planilha', 'exportar', 'delete'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, $special_actions)) {
     $acao = $_POST['acao'] ?? '';
 
@@ -362,7 +356,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, $special_actions
                 'estoque_minimo'     => (int)($_POST['estoque_minimo'] ?? 5),
                 'destaque'           => isset($_POST['destaque']) ? 1 : 0,
                 'ativo'              => isset($_POST['ativo']) ? 1 : 0,
-                'categoria_id'       => !empty($_POST['categoria_id']) ? (int)$_POST['categoria_id'] : null,
+                'categoria_id'       => (!empty($_POST['categoria_id']) && (int)$_POST['categoria_id'] > 0) ? (int)$_POST['categoria_id'] : null,
                 'tags'               => trim($_POST['tags'] ?? ''),
             ];
 
@@ -400,20 +394,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, $special_actions
                     $stmt_up = db()->prepare("UPDATE " . table('produtos') . " SET " . implode(', ', $fields) . " WHERE id = ?");
                     $stmt_up->execute($values);
 
-                    if ($stmt_up->rowCount() === 0) {
-                        // Pode ser que nenhum campo tenha sido alterado, mas o produto existe
-                        // Verificar se o produto existe
-                        $check = db()->prepare("SELECT id FROM " . table('produtos') . " WHERE id = ?");
-                        $check->execute([$id]);
-                        if (!$check->fetch()) {
-                            set_flash('error', "Falha ao atualizar: produto #{$id} não encontrado.");
-                            header('Location: produtos.php?action=edit&id=' . (int)$id);
-                            exit;
-                        }
-                        // Produto existe, mas nenhum campo foi alterado - ainda assim é sucesso
-                    }
-
-                    // Imagens adicionais na tabela separada (sempre inserir novas)
+                    // Imagens adicionais na tabela separada
                     foreach ($imagens_adicionais as $img) {
                         db()->prepare("INSERT INTO " . table('produto_imagens') . " (produto_id, imagem) VALUES (?, ?)")->execute([$id, $img]);
                     }
@@ -427,7 +408,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, $special_actions
                     db()->prepare("INSERT INTO " . table('produtos') . " ({$cols}) VALUES ({$ph})")->execute(array_values($dados));
                     $id = (int)db()->lastInsertId();
 
-                    // Imagens adicionais na tabela separada
                     foreach ($imagens_adicionais as $img) {
                         db()->prepare("INSERT INTO " . table('produto_imagens') . " (produto_id, imagem) VALUES (?, ?)")->execute([$id, $img]);
                     }
@@ -452,7 +432,6 @@ if ($action === 'delete' && $id) {
             if ($p['imagem_principal']) delete_upload($p['imagem_principal']);
             if ($p['imagens']) foreach (json_decode($p['imagens'], true) ?? [] as $img) delete_upload($img);
         }
-        // Imagens adicionais
         $imgs = db()->prepare("SELECT imagem FROM " . table('produto_imagens') . " WHERE produto_id = ?");
         $imgs->execute([$id]);
         foreach ($imgs->fetchAll() as $img) delete_upload($img['imagem']);
@@ -488,7 +467,6 @@ if ($busca) { $where[] = "(p.nome LIKE ? OR p.sku LIKE ?)"; $like="%{$busca}%"; 
 if ($cat_filtro) { $where[] = "p.categoria_id = ?"; $params[] = $cat_filtro; }
 $where_sql = implode(' AND ', $where);
 
-$total = (int)db()->prepare("SELECT COUNT(*) FROM " . table('produtos') . " p WHERE {$where_sql}")->execute($params) ? db()->prepare("SELECT COUNT(*) FROM " . table('produtos') . " p WHERE {$where_sql}")->execute($params) : 0;
 $stmt_count = db()->prepare("SELECT COUNT(*) FROM " . table('produtos') . " p WHERE {$where_sql}");
 $stmt_count->execute($params);
 $total = (int)$stmt_count->fetchColumn();
@@ -627,7 +605,7 @@ if ($action === 'edit' || $action === 'new'):
                 <div class="card-header"><h3><i class="fas fa-image"></i> Imagem Principal</h3></div>
                 <div class="card-body">
                     <?php if (!empty($produto['imagem_principal'])): ?>
-                    <img src="<?php echo uploads_url($produto['imagem_principal']); ?>" style="max-width:100%;border-radius:8px;margin-bottom:10px;">
+                    <img src="<?php echo produto_imagem_url($produto['imagem_principal']); ?>" style="max-width:100%;border-radius:8px;margin-bottom:10px;">
                     <?php endif; ?>
                     <input type="file" name="imagem" accept="image/*">
                 </div>
@@ -639,7 +617,7 @@ if ($action === 'edit' || $action === 'new'):
                     <?php if (!empty($produto_imagens)): ?>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
                         <?php foreach ($produto_imagens as $img): ?>
-                        <img src="<?php echo uploads_url($img['imagem']); ?>" style="width:60px;height:60px;object-fit:cover;border-radius:6px;">
+                        <img src="<?php echo produto_imagem_url($img['imagem']); ?>" style="width:60px;height:60px;object-fit:cover;border-radius:6px;">
                         <?php endforeach; ?>
                     </div>
                     <?php endif; ?>
@@ -676,12 +654,12 @@ if ($action === 'edit' || $action === 'new'):
         <p style="color:var(--gray-500);font-size:0.875rem;margin-bottom:20px;">Envie um arquivo CSV, XLS ou XLSX com os dados dos produtos. Use a coluna <strong>Imagem URL</strong> para importar imagens — elas serão baixadas automaticamente e convertidas para <strong>WebP</strong>.</p>
 
         <div style="margin-bottom:16px;">
-            <a href="produtos.php?action=download_modelo" class="btn btn-outline btn-sm" style="font-size:0.8125rem;">
+            <a href="includes/produtos.csv" download class="btn btn-outline btn-sm" style="font-size:0.8125rem;">
                 <i class="fas fa-download"></i> Baixar modelo de planilha
             </a>
         </div>
 
-        <div id="dropZone" 
+        <div id="dropZone"
              style="border:2px dashed var(--gray-300);border-radius:var(--radius);padding:40px 20px;text-align:center;transition:all 0.2s;cursor:pointer;background:var(--gray-50);"
              ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='var(--primary-light)';"
              ondragleave="this.style.borderColor='var(--gray-300)';this.style.background='var(--gray-50)';"
@@ -755,7 +733,7 @@ if ($action === 'edit' || $action === 'new'):
                 <tr style="<?php echo !$p['ativo']?'background:#fff5f5;':''; ?>">
                     <td>
                         <?php if ($p['imagem_principal']): ?>
-                        <img src="<?php echo uploads_url($p['imagem_principal']); ?>" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">
+                        <img src="<?php echo produto_imagem_url($p['imagem_principal']); ?>" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">
                         <?php else: ?>
                         <div style="width:48px;height:48px;background:var(--gray-100);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--gray-400);"><i class="fas fa-image"></i></div>
                         <?php endif; ?>
@@ -885,7 +863,6 @@ function enviarPlanilha() {
             html += `</div>`;
             resultado.innerHTML = html;
 
-            // Recarregar página após 2 segundos se deu certo
             if (d.importados > 0 || d.atualizados > 0) {
                 setTimeout(() => window.location.reload(), 2000);
             }

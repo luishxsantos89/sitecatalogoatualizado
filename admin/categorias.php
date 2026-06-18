@@ -105,17 +105,7 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ========== DOWNLOAD MODELO DE PLANILHA ==========
-if ($action === 'download_modelo') {
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="modelo_categorias.csv"');
-    $output = fopen('php://output', 'w');
-    fputcsv($output, ['Nome', 'Descrição', 'Ícone', 'Ordem', 'Ativo'], ';');
-    fputcsv($output, ['Eletrônicos', 'Produtos eletrônicos em geral', 'devices', '1', '1'], ';');
-    fputcsv($output, ['Roupas', 'Vestuário masculino e feminino', 'checkroom', '2', '1'], ';');
-    fclose($output);
-    exit;
-}
+
 
 // ========== EXPORTAR CATEGORIAS EM PLANILHA ==========
 if ($action === 'exportar') {
@@ -263,7 +253,7 @@ require_once __DIR__ . '/includes/header.php';
         <p style="color:var(--gray-500);font-size:0.875rem;margin-bottom:20px;">Envie um arquivo CSV, XLS ou XLSX com os dados das categorias. Categorias existentes (mesmo nome) serão atualizadas.</p>
 
         <div style="margin-bottom:16px;">
-            <a href="categorias.php?action=download_modelo" class="btn btn-outline btn-sm" style="font-size:0.8125rem;">
+            <a href="includes/categorias.csv" download class="btn btn-outline btn-sm" style="font-size:0.8125rem;">
                 <i class="fas fa-download"></i> Baixar modelo de planilha
             </a>
         </div>

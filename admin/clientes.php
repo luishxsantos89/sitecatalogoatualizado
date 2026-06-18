@@ -194,42 +194,7 @@ if ($action === 'importar_planilha' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ========== DOWNLOAD MODELO ==========
-if ($action === 'download_modelo') {
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="modelo_clientes.csv"');
 
-    $output = fopen('php://output', 'w');
-    fputcsv($output, [
-        'Nome', 'Tipo Pessoa', 'CPF/CNPJ', 'RG/IE', 'Email', 'Telefone', 'Celular',
-        'CEP', 'Endereço', 'Número', 'Complemento', 'Bairro', 'Cidade', 'Estado',
-        'Categoria', 'Limite Crédito', 'Status', 'Observações'
-    ], ';');
-
-    fputcsv($output, [
-        'João da Silva',
-        'fisica',
-        '123.456.789-00',
-        '',
-        'joao@email.com',
-        '(11) 3333-4444',
-        '(11) 99999-8888',
-        '01001-000',
-        'Praça da Sé',
-        '100',
-        '',
-        'Centro',
-        'São Paulo',
-        'SP',
-        'cliente_final',
-        '500,00',
-        'ativo',
-        'Cliente preferencial'
-    ], ';');
-
-    fclose($output);
-    exit;
-}
 
 // ========== EXPORTAR CLIENTES ==========
 if ($action === 'exportar') {
@@ -711,12 +676,12 @@ function buscarCep(cep) {
         <p style="color:var(--gray-500);font-size:0.875rem;margin-bottom:20px;">Envie um arquivo CSV, XLS ou XLSX com os dados dos clientes.</p>
 
         <div style="margin-bottom:16px;">
-            <a href="clientes.php?action=download_modelo" class="btn btn-outline btn-sm" style="font-size:0.8125rem;">
+            <a href="includes/clientes.csv" download class="btn btn-outline btn-sm" style="font-size:0.8125rem;">
                 <i class="fas fa-download"></i> Baixar modelo de planilha
             </a>
         </div>
 
-        <div id="dropZone" 
+        <div id="dropZone"
              style="border:2px dashed var(--gray-300);border-radius:var(--radius);padding:40px 20px;text-align:center;transition:all 0.2s;cursor:pointer;background:var(--gray-50);"
              ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='var(--primary-light)';"
              ondragleave="this.style.borderColor='var(--gray-300)';this.style.background='var(--gray-50)';"
