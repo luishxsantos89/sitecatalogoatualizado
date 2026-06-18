@@ -370,10 +370,38 @@ $carrinho = $_SESSION['carrinho'] ?? [];
 $total_carrinho = array_sum(array_map(fn($i) => ((float)($i['preco_promocional'] > 0 ? $i['preco_promocional'] : $i['preco'])) * (int)$i['qtd'], $carrinho));
 
 // Dados
+// Helper: retorna banners ativos de uma posição, respeitando prazo
+function get_banners_ativos(string $posicao, int $limit = 10): array {
+    try {
+        $stmt = db()->prepare("
+            SELECT * FROM " . table('banners') . "
+            WHERE ativo = 1
+              AND posicao = ?
+              AND (
+                  prazo_fixo = 1
+                  OR (
+                      (data_inicio IS NULL OR data_inicio <= CURDATE())
+                      AND (data_fim   IS NULL OR data_fim   >= CURDATE())
+                  )
+              )
+            ORDER BY ordem ASC
+            LIMIT {$limit}
+        ");
+        $stmt->execute([$posicao]);
+        return $stmt->fetchAll();
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
 try {
-    $categorias = db()->query("SELECT * FROM " . table('categorias') . " WHERE ativo = 1 ORDER BY ordem, nome")->fetchAll();
-    $banners    = db()->query("SELECT * FROM " . table('banners') . " WHERE ativo = 1 AND posicao = 'home_topo' ORDER BY ordem LIMIT 5")->fetchAll();
-} catch (Exception $e) { $categorias = []; $banners = []; }
+    $categorias        = db()->query("SELECT * FROM " . table('categorias') . " WHERE ativo = 1 ORDER BY ordem, nome")->fetchAll();
+    $banners_slide     = get_banners_ativos('slide', 8);
+    $banners_categoria = get_banners_ativos('categoria', 5);
+    $banners_popup     = get_banners_ativos('popup', 3);
+    // Compatibilidade: mantém $banners apontando para slide
+    $banners = $banners_slide;
+} catch (Exception $e) { $categorias = []; $banners = []; $banners_slide = []; $banners_categoria = []; $banners_popup = []; }
 
 // Produtos
 $where = ["p.ativo = 1"]; $params = [];
@@ -1340,42 +1368,42 @@ if ($produto_modal && !empty($produto_modal['categoria_id'])) {
     </div>
 </div>
 
-<!-- Banners (só na home sem filtros) - SLIDESHOW -->
-<?php if (!empty($banners) && !$busca && !$categoria_id && $page == 1): ?>
-<div style="background:var(--gray-900);position:relative;overflow:hidden;" id="bannerSlider">
-    <div id="bannerTrack" style="display:flex;transition:transform 0.6s cubic-bezier(0.25,0.46,0.45,0.94);">
-        <?php foreach ($banners as $b): ?>
-        <div style="min-width:100%;position:relative;flex-shrink:0;">
-            <?php if ($b['link']): ?><a href="<?php echo sanitize($b['link']); ?>"><?php endif; ?>
-            <img src="<?php echo uploads_url($b['imagem']); ?>" alt="<?php echo sanitize($b['titulo']??''); ?>"
-                 style="width:100%;max-height:420px;min-height:200px;object-fit:cover;display:block;">
-            <?php if ($b['link']): ?></a><?php endif; ?>
-            <?php if ($b['titulo'] || $b['subtitulo']): ?>
-            <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(0,0,0,0.75),transparent);padding:30px 40px;">
-                <?php if ($b['titulo']): ?><h2 style="color:#fff;font-size:1.75rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.4);"><?php echo sanitize($b['titulo']); ?></h2><?php endif; ?>
-                <?php if ($b['subtitulo']): ?><p style="color:rgba(255,255,255,0.85);margin-top:6px;font-size:1rem;"><?php echo sanitize($b['subtitulo']); ?></p><?php endif; ?>
+<!-- Banners SLIDE (dentro do container, só na home sem filtros) -->
+<?php if (!empty($banners_slide) && !$busca && !$categoria_id && $page == 1): ?>
+<div class="container" style="padding-top:24px;">
+    <div style="border-radius:14px;overflow:hidden;position:relative;background:var(--gray-900);" id="bannerSlider">
+        <div id="bannerTrack" style="display:flex;transition:transform 0.6s cubic-bezier(0.25,0.46,0.45,0.94);">
+            <?php foreach ($banners_slide as $b): ?>
+            <div style="min-width:100%;position:relative;flex-shrink:0;">
+                <?php if ($b['link']): ?><a href="<?php echo sanitize($b['link']); ?>"><?php endif; ?>
+                <img src="<?php echo uploads_url($b['imagem']); ?>" alt="<?php echo sanitize($b['titulo']??''); ?>"
+                     style="width:100%;max-height:380px;min-height:160px;object-fit:cover;display:block;">
+                <?php if ($b['link']): ?></a><?php endif; ?>
+                <?php if ($b['titulo'] || $b['subtitulo']): ?>
+                <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(0,0,0,0.75),transparent);padding:24px 32px;">
+                    <?php if ($b['titulo']): ?><h2 style="color:#fff;font-size:1.6rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.4);margin:0;"><?php echo sanitize($b['titulo']); ?></h2><?php endif; ?>
+                    <?php if ($b['subtitulo']): ?><p style="color:rgba(255,255,255,0.85);margin-top:6px;font-size:0.95rem;"><?php echo sanitize($b['subtitulo']); ?></p><?php endif; ?>
+                </div>
+                <?php endif; ?>
             </div>
-            <?php endif; ?>
+            <?php endforeach; ?>
         </div>
-        <?php endforeach; ?>
-    </div>
 
-    <?php if (count($banners) > 1): ?>
-    <!-- Setas -->
-    <button onclick="bannerPrev()" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.2);backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.3);color:#fff;width:44px;height:44px;border-radius:50%;cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;transition:all 0.2s;z-index:5;" onmouseover="this.style.background='rgba(255,255,255,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
-        <i class="fas fa-chevron-left"></i>
-    </button>
-    <button onclick="bannerNext()" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.2);backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.3);color:#fff;width:44px;height:44px;border-radius:50%;cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;transition:all 0.2s;z-index:5;" onmouseover="this.style.background='rgba(255,255,255,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
-        <i class="fas fa-chevron-right"></i>
-    </button>
-    <!-- Bolinhas indicadoras -->
-    <div id="bannerDots" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:5;">
-        <?php foreach ($banners as $bi => $b): ?>
-        <button onclick="bannerGoTo(<?php echo $bi; ?>)" id="dot-<?php echo $bi; ?>"
-            style="width:<?php echo $bi===0?'24px':'8px'; ?>;height:8px;border-radius:4px;border:none;background:<?php echo $bi===0?'#fff':'rgba(255,255,255,0.45)'; ?>;cursor:pointer;transition:all 0.3s;padding:0;"></button>
-        <?php endforeach; ?>
+        <?php if (count($banners_slide) > 1): ?>
+        <button onclick="bannerPrev()" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.2);backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.3);color:#fff;width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all 0.2s;z-index:5;" onmouseover="this.style.background='rgba(255,255,255,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        <button onclick="bannerNext()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.2);backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.3);color:#fff;width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all 0.2s;z-index:5;" onmouseover="this.style.background='rgba(255,255,255,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+        <div id="bannerDots" style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:5;">
+            <?php foreach ($banners_slide as $bi => $b): ?>
+            <button onclick="bannerGoTo(<?php echo $bi; ?>)" id="dot-<?php echo $bi; ?>"
+                style="width:<?php echo $bi===0?'24px':'8px'; ?>;height:8px;border-radius:4px;border:none;background:<?php echo $bi===0?'#fff':'rgba(255,255,255,0.45)'; ?>;cursor:pointer;transition:all 0.3s;padding:0;"></button>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
     </div>
-    <?php endif; ?>
 </div>
 <?php endif; ?>
 
@@ -1574,6 +1602,22 @@ function changeMainImagePag(thumb, src) {
     <!-- Sidebar de Categorias (DESKTOP - apenas no modo sidebar) -->
     <?php if ($categoria_layout === 'sidebar'): ?>
     <aside class="cat-sidebar desktop-only">
+        <?php if (!empty($banners_categoria)): ?>
+        <div style="margin-bottom:16px;">
+            <?php foreach ($banners_categoria as $bc): ?>
+            <div style="margin-bottom:10px;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+                <?php if ($bc['link']): ?><a href="<?php echo sanitize($bc['link']); ?>"><?php endif; ?>
+                <img src="<?php echo uploads_url($bc['imagem']); ?>"
+                     alt="<?php echo sanitize($bc['titulo']??''); ?>"
+                     style="width:100%;display:block;">
+                <?php if ($bc['link']): ?></a><?php endif; ?>
+                <?php if (!empty($bc['titulo'])): ?>
+                <div style="font-size:.75rem;color:var(--gray-500);padding:4px 6px;text-align:center;"><?php echo sanitize($bc['titulo']); ?></div>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
         <h3 style="font-size:0.875rem;font-weight:700;margin-bottom:12px;color:var(--gray-800);text-transform:uppercase;letter-spacing:0.05em;">Categorias</h3>
         <div style="display:flex;flex-direction:column;gap:4px;">
             <a href="/" style="background:<?php echo !$categoria_id ? $cor_primaria : 'transparent'; ?>;color:<?php echo !$categoria_id ? '#fff' : 'var(--gray-600)'; ?>;border:1px solid <?php echo !$categoria_id ? $cor_primaria : 'transparent'; ?>;">
@@ -2626,6 +2670,57 @@ document.addEventListener('keydown', e => {
 
 <!-- ===== SCRIPTS PERSONALIZADOS antes de </body> (vindo da página SEO) ===== -->
 <?php echo $custom_body_scripts; ?>
+
+<!-- ===== BANNERS POPUP ===== -->
+<?php foreach ($banners_popup as $bp):
+    $bp_id    = 'banner_popup_' . $bp['id'];
+    $bp_delay = (int)($bp['popup_delay'] ?? 0) * 1000;
+    $bp_fora  = in_array($bp['popup_fechar'] ?? 'botao', ['fora','ambos']) ? 'true' : 'false';
+    $bp_botao = in_array($bp['popup_fechar'] ?? 'botao', ['botao','ambos']) ? 'true' : 'false';
+?>
+<div id="<?php echo $bp_id; ?>"
+     style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:20px;">
+    <div style="position:relative;max-width:600px;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4);animation:modalFadeIn .3s ease;">
+        <?php if ($bp_botao === 'true'): ?>
+        <button onclick="fecharBannerPopup('<?php echo $bp_id; ?>')"
+                style="position:absolute;top:10px;right:12px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:32px;height:32px;font-size:1.2rem;cursor:pointer;z-index:1;line-height:1;display:flex;align-items:center;justify-content:center;">&times;</button>
+        <?php endif; ?>
+        <?php if ($bp['link']): ?><a href="<?php echo sanitize($bp['link']); ?>"><?php endif; ?>
+        <img src="<?php echo uploads_url($bp['imagem']); ?>"
+             alt="<?php echo sanitize($bp['titulo']??''); ?>"
+             style="width:100%;display:block;">
+        <?php if ($bp['link']): ?></a><?php endif; ?>
+        <?php if (!empty($bp['titulo']) || !empty($bp['subtitulo'])): ?>
+        <div style="padding:16px 20px;background:#fff;">
+            <?php if (!empty($bp['titulo'])): ?><h3 style="margin:0 0 4px;font-size:1.05rem;font-weight:700;"><?php echo sanitize($bp['titulo']); ?></h3><?php endif; ?>
+            <?php if (!empty($bp['subtitulo'])): ?><p style="margin:0;color:var(--gray-500);font-size:.875rem;"><?php echo sanitize($bp['subtitulo']); ?></p><?php endif; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+<script>
+(function(){
+    var pid = <?php echo json_encode($bp_id); ?>;
+    var fecharFora = <?php echo $bp_fora; ?>;
+    setTimeout(function(){
+        var el = document.getElementById(pid);
+        if (!el) return;
+        el.style.display = 'flex';
+        if (fecharFora) {
+            el.addEventListener('click', function(e){ if (e.target === el) fecharBannerPopup(pid); });
+        }
+    }, <?php echo $bp_delay; ?>);
+})();
+</script>
+<?php endforeach; ?>
+<?php if (!empty($banners_popup)): ?>
+<script>
+function fecharBannerPopup(pid) {
+    var el = document.getElementById(pid);
+    if (el) el.style.display = 'none';
+}
+</script>
+<?php endif; ?>
 
 </body>
 </html>
