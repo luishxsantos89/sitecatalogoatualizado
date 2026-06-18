@@ -1,11 +1,12 @@
 -- ============================================================
--- SiteCatalogo - Banco de Dados Completo (DEFINITIVO v2.3)
+-- SiteCatalogo - Banco de Dados Completo (DEFINITIVO v2.4)
 -- Prefixo: sc_  |  Charset: utf8mb4  |  Engine: InnoDB
 --
 -- CORREÇÕES DESTA VERSÃO:
 --   • Sincronizado 100% com banco de dados real (HeidiSQL)
 --   • Sincronizado com código PHP do GitHub e local
 --   • sc_orcamentos: cliente_cidade confirmado
+--   • sc_orcamentos: cliente_estado ADICIONADO
 --   • sc_clientes: nome_razaosocial NOT NULL + nome DEFAULT ''
 --   • sc_configuracoes: orcamento_whatsapp_msg adicionado
 --   • Todas as 15 tabelas verificadas e validadas
@@ -194,6 +195,7 @@ CREATE TABLE `sc_orcamentos` (
   `cliente_telefone` varchar(20) DEFAULT NULL,
   `cliente_cpf_cnpj` varchar(20) DEFAULT NULL,
   `cliente_cidade` varchar(255) DEFAULT NULL,
+  `cliente_estado` char(2) DEFAULT NULL,
   `tipo_contato` varchar(30) DEFAULT 'whatsapp',
   `forma_pagamento` varchar(255) DEFAULT NULL,
   `status` enum('novo','pendente','em_analise','respondido','aprovado','rejeitado','cancelado') DEFAULT 'novo',
@@ -460,13 +462,14 @@ CREATE TABLE `sc_emails` (
 SET FOREIGN_KEY_CHECKS = 1;
 -- ============================================================
 -- FIM DO SCHEMA DEFINITIVO
--- Versão: 2.3  |  Atualizado: 2026-06-18
+-- Versão: 2.4  |  Atualizado: 2026-06-18
 -- Garantias:
 --   • sc_clientes.nome_razaosocial: NOT NULL (sem DEFAULT, obrigatório)
 --   • sc_clientes.nome: NOT NULL DEFAULT '' (compatibilidade)
 --   • sc_banners.popup_freq_max: DEFAULT 0
 --   • sc_banners.popup_intervalo: DEFAULT 0
 --   • sc_orcamentos.cliente_cidade: PRESENTE (varchar 255)
+--   • sc_orcamentos.cliente_estado: ADICIONADO (char 2)
 --   • sc_configuracoes.orcamento_whatsapp_msg: ADICIONADO
 --   • Todas as 15 tabelas verificadas e validadas contra HeidiSQL
 -- ============================================================

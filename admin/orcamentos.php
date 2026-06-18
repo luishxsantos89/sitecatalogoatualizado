@@ -103,7 +103,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['new','save_manu
     $cliente_cpf     = trim($_POST['cliente_cpf_cnpj'] ?? '');
     $cliente_cidade  = trim($_POST['cliente_cidade'] ?? '');
     $cliente_estado  = trim($_POST['cliente_estado'] ?? '');
-    $cliente_cidade_estado = implode(' / ', array_filter([$cliente_cidade, $cliente_estado]));
     $tipo_contato    = $_POST['tipo_contato'] ?? 'whatsapp';
     $forma_pagamento = trim($_POST['forma_pagamento'] ?? '');
     $observacoes     = trim($_POST['observacoes'] ?? '');
@@ -134,8 +133,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['new','save_manu
             if ($cli) $cliente_id = $cli;
         }
 
-        db()->prepare("INSERT INTO " . table('orcamentos') . " (codigo,cliente_id,cliente_nome,cliente_email,cliente_telefone,cliente_cpf_cnpj,cliente_cidade,tipo_contato,forma_pagamento,status,observacoes,data_entrega,tabela_preco,valor_produtos,valor_servicos,desconto,valor_total,usuario_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-            ->execute([$codigo,$cliente_id,$cliente_nome,$cliente_email,$cliente_telefone,$cliente_cpf,$cliente_cidade_estado,$tipo_contato,$forma_pagamento,'novo',$observacoes,$data_entrega,$tabela_preco,$valor_produtos,$valor_servicos,$desconto,$valor_total,$_SESSION['admin_id']??null]);
+        // CORREÇÃO: Salvar cliente_cidade e cliente_estado separadamente
+        db()->prepare("INSERT INTO " . table('orcamentos') . " (codigo,cliente_id,cliente_nome,cliente_email,cliente_telefone,cliente_cpf_cnpj,cliente_cidade,cliente_estado,tipo_contato,forma_pagamento,status,observacoes,data_entrega,tabela_preco,valor_produtos,valor_servicos,desconto,valor_total,usuario_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+            ->execute([$codigo,$cliente_id,$cliente_nome,$cliente_email,$cliente_telefone,$cliente_cpf,$cliente_cidade,$cliente_estado,$tipo_contato,$forma_pagamento,'novo',$observacoes,$data_entrega,$tabela_preco,$valor_produtos,$valor_servicos,$desconto,$valor_total,$_SESSION['admin_id']??null]);
 
         $orc_id = db()->lastInsertId();
 
@@ -522,7 +522,7 @@ document.getElementById('buscaProduto').addEventListener('input', function() {
             div.innerHTML = prods.length ? prods.map(p => {
                 const preco = (p.preco_promocional && parseFloat(p.preco_promocional) > 0) ? p.preco_promocional : p.preco;
                 const imgSrc = p.imagem_principal ? '/uploads/' + p.imagem_principal : '/assets/images/no-image.svg';
-                return `<div class="busca-item" onclick='adicionarProduto(${JSON.stringify(p).replace(/'/g,"\\'")})'  >
+                return `<div class="busca-item" onclick='adicionarProduto(${JSON.stringify(p).replace(/'/g,"\'")})'  >
                     <img src="${imgSrc}" onerror="this.src='/assets/images/no-image.svg'">
                     <div style="flex:1"><strong>${escHtml(p.nome)}</strong><br><small>SKU: ${escHtml(p.sku||'N/A')} | Estoque: ${p.quantidade_estoque}</small></div>
                     <strong style="color:var(--primary);">R$ ${parseFloat(preco).toFixed(2).replace('.',',')}</strong>
@@ -751,6 +751,9 @@ function imprimirOrcamento() {
     const dataStr = data.toLocaleDateString('pt-BR');
     const horaStr = data.toLocaleTimeString('pt-BR');
 
+    // CORREÇÃO: Usar cliente_cidade + cliente_estado em vez de cliente_endereco
+    const cidadeEstado = (orcamento.cliente_cidade || 'Não informado') + (orcamento.cliente_estado ? '/' + orcamento.cliente_estado : '');
+
     const printHtml = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -812,8 +815,8 @@ function imprimirOrcamento() {
 <div class="info-os">
     <div>
         <strong>Cliente:</strong> ${orcamento.cliente_nome}<br>
-        <strong>Endereco:</strong> ${orcamento.cliente_endereco || 'Não informado'}<br>
-        <strong>Cidade:</strong> Duque de Caxias/RJ<br>
+        <strong>Endereco:</strong> ${cidadeEstado}<br>
+        <strong>Cidade:</strong> ${cidadeEstado}<br>
         <strong>CPF/CNPJ:</strong> ${orcamento.cliente_cpf_cnpj || 'Não informado'}
     </div>
     <div style="text-align:right;">
