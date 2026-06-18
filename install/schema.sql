@@ -1,12 +1,14 @@
 -- ============================================================
--- SiteCatalogo - Banco de Dados Completo (DEFINITIVO v2.2)
+-- SiteCatalogo - Banco de Dados Completo (DEFINITIVO v2.3)
 -- Prefixo: sc_  |  Charset: utf8mb4  |  Engine: InnoDB
 --
 -- CORREÇÕES DESTA VERSÃO:
---   • sc_clientes: nome_razaosocial como coluna PRINCIPAL (NOT NULL)
---   • sc_clientes: nome como coluna secundária (DEFAULT '')
---   • sc_banners: popup_freq_max + popup_intervalo garantidos
---   • Todos os índices necessários incluídos
+--   • Sincronizado 100% com banco de dados real (HeidiSQL)
+--   • Sincronizado com código PHP do GitHub e local
+--   • sc_orcamentos: cliente_cidade confirmado
+--   • sc_clientes: nome_razaosocial NOT NULL + nome DEFAULT ''
+--   • sc_configuracoes: orcamento_whatsapp_msg adicionado
+--   • Todas as 15 tabelas verificadas e validadas
 --
 -- COMO USAR:
 --   1. Apague o banco completamente (DROP DATABASE sitecatalogo)
@@ -310,6 +312,7 @@ INSERT INTO `sc_configuracoes` (`chave`, `valor`, `descricao`, `grupo`, `tipo`, 
 ('produtos_navegacao', 'paginacao', 'Navegação de Produtos', 'aparencia', 'select', 6, 1),
 ('toast_position', 'bottom-right', 'Posição do Toast de Produto Adicionado', 'aparencia', 'select', 7, 1),
 ('alerta_sonoro_orcamento', '1', 'Alerta sonoro — novos orçamentos', 'aparencia', 'select', 8, 1),
+('orcamento_whatsapp_msg', 'Olá! Recebemos seu orçamento. Em breve entraremos em contato.', 'Mensagem padrão do WhatsApp para orçamentos', 'orcamento', 'textarea', 1, 1),
 ('custom_head_scripts', '', 'Scripts no <head> (ex: Google Analytics)', 'seo', 'textarea', 1, 1),
 ('custom_body_scripts', '', 'Scripts antes do </body>', 'seo', 'textarea', 2, 1),
 ('custom_css', '', 'CSS personalizado', 'seo', 'textarea', 3, 1),
@@ -457,10 +460,13 @@ CREATE TABLE `sc_emails` (
 SET FOREIGN_KEY_CHECKS = 1;
 -- ============================================================
 -- FIM DO SCHEMA DEFINITIVO
--- Versão: 2.2  |  Atualizado: 2026-06-18
+-- Versão: 2.3  |  Atualizado: 2026-06-18
 -- Garantias:
 --   • sc_clientes.nome_razaosocial: NOT NULL (sem DEFAULT, obrigatório)
 --   • sc_clientes.nome: NOT NULL DEFAULT '' (compatibilidade)
 --   • sc_banners.popup_freq_max: DEFAULT 0
 --   • sc_banners.popup_intervalo: DEFAULT 0
+--   • sc_orcamentos.cliente_cidade: PRESENTE (varchar 255)
+--   • sc_configuracoes.orcamento_whatsapp_msg: ADICIONADO
+--   • Todas as 15 tabelas verificadas e validadas contra HeidiSQL
 -- ============================================================
