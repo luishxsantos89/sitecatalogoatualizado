@@ -213,13 +213,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'movimen
     $pid  = (int)($_POST['produto_id'] ?? 0);
     $tipo = $_POST['tipo'] ?? 'entrada';
     $qtd  = (int)($_POST['quantidade'] ?? 0);
+    $novo_minimo = isset($_POST['estoque_minimo']) && $_POST['estoque_minimo'] !== '' ? (int)$_POST['estoque_minimo'] : null;
 
     if ($pid <= 0) {
         set_flash('error', 'Selecione um produto');
     } elseif ($qtd <= 0) {
         set_flash('error', 'Quantidade deve ser maior que zero');
     } else {
-        $sel = db()->prepare("SELECT id, quantidade_estoque FROM " . table('produtos') . " WHERE id = ?");
+        $sel = db()->prepare("SELECT id, quantidade_estoque, estoque_minimo FROM " . table('produtos') . " WHERE id = ?");
         $sel->execute([$pid]);
         $p = $sel->fetch();
 
@@ -229,8 +230,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'movimen
             $ant  = (int)$p['quantidade_estoque'];
             $nova = $tipo === 'entrada' ? $ant + $qtd : max(0, $ant - $qtd);
 
-            $upd = db()->prepare("UPDATE " . table('produtos') . " SET quantidade_estoque = ? WHERE id = ?");
-            $upd->execute([$nova, $pid]);
+            // Atualizar quantidade e opcionalmente o estoque mínimo
+            if ($novo_minimo !== null) {
+                $upd = db()->prepare("UPDATE " . table('produtos') . " SET quantidade_estoque = ?, estoque_minimo = ? WHERE id = ?");
+                $upd->execute([$nova, $novo_minimo, $pid]);
+            } else {
+                $upd = db()->prepare("UPDATE " . table('produtos') . " SET quantidade_estoque = ? WHERE id = ?");
+                $upd->execute([$nova, $pid]);
+            }
 
             // Histórico: tenta com colunas extras, depois mínimo, nunca bloqueia
             try {
@@ -243,7 +250,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'movimen
                 } catch (Exception $e2) { /* histórico opcional */ }
             }
 
-            set_flash('success', "Estoque atualizado! {$ant} → {$nova}");
+            $msg_minimo = ($novo_minimo !== null) ? " | Mínimo: {$novo_minimo}" : "";
+            set_flash('success', "Estoque atualizado! {$ant} → {$nova}{$msg_minimo}");
         }
     }
     header('Location: estoque.php'); exit;
@@ -351,7 +359,7 @@ require_once __DIR__ . '/includes/header.php';
 
 <!-- Modal de movimentação -->
 <div id="modalMov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
-    <div style="background:#fff;border-radius:12px;padding:32px;width:100%;max-width:420px;">
+    <div style="background:#fff;border-radius:12px;padding:32px;width:100%;max-width:480px;">
         <h3 style="margin-bottom:20px;font-size:1.1rem;font-weight:700;"><i class="fas fa-exchange-alt" style="color:var(--primary);"></i> Movimentar Estoque</h3>
         <form method="POST">
             <input type="hidden" name="acao" value="movimentar">
@@ -372,6 +380,11 @@ require_once __DIR__ . '/includes/header.php';
                     <label>Quantidade *</label>
                     <input type="number" name="quantidade" min="1" value="1" required>
                 </div>
+            </div>
+            <div class="form-group">
+                <label>Estoque Mínimo</label>
+                <input type="number" name="estoque_minimo" id="movEstoqueMinimo" min="0" value="0">
+                <small class="text-muted">Deixe em branco para não alterar o estoque mínimo</small>
             </div>
             <div style="display:flex;gap:10px;">
                 <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Confirmar</button>
@@ -431,7 +444,7 @@ require_once __DIR__ . '/includes/header.php';
                         </td>
                         <td>
                             <?php if ($can_movimentar): ?>
-                            <button onclick="abrirMov(<?php echo $p['id']; ?>,'<?php echo addslashes($p['nome']); ?>')"
+                            <button onclick="abrirMov(<?php echo $p['id']; ?>,'<?php echo addslashes($p['nome']); ?>', <?php echo (int)$p['estoque_minimo']; ?>)"
                                     class="btn btn-sm btn-primary">
                                 <i class="fas fa-exchange-alt"></i> Movimentar
                             </button>
@@ -474,9 +487,10 @@ require_once __DIR__ . '/includes/header.php';
 </div>
 
 <script>
-function abrirMov(id, nome) {
+function abrirMov(id, nome, estoqueMinimo) {
     document.getElementById('movProdId').value = id;
     document.getElementById('movProdNome').value = nome;
+    document.getElementById('movEstoqueMinimo').value = estoqueMinimo || 0;
     document.getElementById('modalMov').style.display = 'flex';
 }
 function fecharModalMov() {
