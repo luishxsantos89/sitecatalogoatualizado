@@ -1,6 +1,6 @@
 <?php
 /**
- * SiteCatalogo2 - Configurações
+ * SiteCatalogo2 - Configurações  (v2.6 — SMTP + IMAP integrados)
  */
 require_once __DIR__ . '/includes/functions.php';
 
@@ -13,147 +13,115 @@ if (!check_permission('admin')) {
 
 $page_title = 'Configurações';
 
+// ─── Chaves que podem não existir ainda no banco ───────────────
+$chaves_extras = [
+    'toast_position', 'produtos_navegacao', 'empresa_sobre', 'empresa_slogan',
+    'alerta_sonoro_orcamento', 'produto_visualizacao',
+    // SMTP
+    'smtp_host','smtp_port','smtp_user','smtp_pass','smtp_encryption','site_nome_email',
+    // IMAP
+    'imap_host','imap_port','imap_ssl','imap_user','imap_pass','imap_folder',
+    'imap_folder_sent','imap_folder_drafts','imap_folder_archive','imap_folder_spam','imap_folder_trash',
+];
+
+// ─── Salvar configurações ──────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        // Chaves extras que podem não existir ainda na tabela do banco
-        $chaves_extras = [
-            'toast_position',
-            'produtos_navegacao',
-            'empresa_sobre',
-            'empresa_slogan',
-            'alerta_sonoro_orcamento',
-            'produto_visualizacao',
-        ];
-
         foreach ($_POST['config'] as $chave => $valor) {
             $valor = trim($valor);
             if (in_array($chave, $chaves_extras)) {
-                // Usa INSERT ... ON DUPLICATE KEY UPDATE para garantir que funciona mesmo sem linha no banco
                 try {
                     $existe = db()->prepare("SELECT COUNT(*) FROM " . table('configuracoes') . " WHERE chave = ?");
                     $existe->execute([$chave]);
                     if ((int)$existe->fetchColumn() > 0) {
                         db()->prepare("UPDATE " . table('configuracoes') . " SET valor = ? WHERE chave = ?")->execute([$valor, $chave]);
                     } else {
-                        // Descobre o grupo correto
-                        $grupo_extra = ($chave === 'empresa_sobre' || $chave === 'empresa_slogan') ? 'geral' : 'aparencia';
-                        $tipo_extra  = ($chave === 'empresa_sobre') ? 'textarea' : (($chave === 'empresa_slogan') ? 'text' : 'select');
-                        db()->prepare("INSERT INTO " . table('configuracoes') . " (chave, valor, grupo, tipo, ativo, ordem) VALUES (?, ?, ?, ?, 1, 99)")->execute([$chave, $valor, $grupo_extra, $tipo_extra]);
+                        // Detecta grupo e tipo para inserção nova
+                        if (in_array($chave, ['smtp_host','smtp_port','smtp_user','smtp_pass','smtp_encryption','site_nome_email','imap_host','imap_port','imap_ssl','imap_user','imap_pass','imap_folder','imap_folder_sent','imap_folder_drafts','imap_folder_archive','imap_folder_spam','imap_folder_trash'])) {
+                            $grupo_extra = 'email';
+                            $tipo_extra  = in_array($chave, ['smtp_port','imap_port']) ? 'number' : (in_array($chave, ['smtp_pass','imap_pass']) ? 'password' : (in_array($chave, ['smtp_encryption','imap_ssl']) ? 'select' : 'text'));
+                        } elseif (in_array($chave, ['empresa_sobre','empresa_slogan'])) {
+                            $grupo_extra = 'geral';
+                            $tipo_extra  = ($chave === 'empresa_sobre') ? 'textarea' : 'text';
+                        } else {
+                            $grupo_extra = 'aparencia';
+                            $tipo_extra  = 'select';
+                        }
+                        db()->prepare("INSERT INTO " . table('configuracoes') . " (chave, valor, grupo, tipo, ativo, ordem) VALUES (?,?,?,?,1,99)")
+                            ->execute([$chave, $valor, $grupo_extra, $tipo_extra]);
                     }
-                } catch (Exception $e2) {
-                    // fallback silencioso
-                }
+                } catch (Exception $e2) { /* fallback silencioso */ }
             } else {
                 set_config($chave, $valor);
             }
         }
+
+        // Upload de logo
         if (!empty($_FILES['config']['name']['logo_cliente'])) {
-            $up = handle_upload(['name'=>$_FILES['config']['name']['logo_cliente'],'tmp_name'=>$_FILES['config']['tmp_name']['logo_cliente'],'error'=>$_FILES['config']['error']['logo_cliente']], 'config');
-            if ($up) { $old = get_config('logo_cliente'); if ($old) delete_upload($old); set_config('logo_cliente', $up); }
+            $up = handle_upload([
+                'name'     => $_FILES['config']['name']['logo_cliente'],
+                'tmp_name' => $_FILES['config']['tmp_name']['logo_cliente'],
+                'error'    => $_FILES['config']['error']['logo_cliente'],
+            ], 'config');
+            if ($up) {
+                $old = get_config('logo_cliente');
+                if ($old) delete_upload($old);
+                set_config('logo_cliente', $up);
+            }
         }
+
         log_activity('update', 'configuracoes', 'Configurações atualizadas');
         set_flash('success', 'Configurações salvas com sucesso!');
-    } catch (Exception $e) { set_flash('error', 'Erro: ' . $e->getMessage()); }
+    } catch (Exception $e) {
+        set_flash('error', 'Erro: ' . $e->getMessage());
+    }
     header('Location: configuracoes.php'); exit;
 }
 
-$configuracoes = db()->query("SELECT * FROM " . table('configuracoes') . " WHERE ativo = 1 AND grupo != 'email' AND grupo != 'seo' AND chave != 'categoria_layout' AND chave NOT IN ('toast_position','produtos_navegacao','empresa_sobre','empresa_slogan','alerta_sonoro_orcamento','produto_visualizacao') ORDER BY CASE WHEN grupo='geral' THEN 1 WHEN grupo='contato' THEN 2 WHEN grupo='social' THEN 3 WHEN grupo='aparencia' THEN 4 ELSE 5 END, ordem, id")->fetchAll();
+// ─── Carregar configurações do banco (exceto email e seo — tratadas separado) ──
+$configuracoes = db()->query(
+    "SELECT * FROM " . table('configuracoes') . "
+     WHERE ativo = 1
+       AND grupo NOT IN ('email','seo')
+       AND chave NOT IN ('categoria_layout','toast_position','produtos_navegacao','empresa_sobre','empresa_slogan','alerta_sonoro_orcamento','produto_visualizacao')
+     ORDER BY CASE WHEN grupo='geral' THEN 1 WHEN grupo='contato' THEN 2 WHEN grupo='social' THEN 3 WHEN grupo='aparencia' THEN 4 ELSE 5 END, ordem, id"
+)->fetchAll();
 
-// Ícones para redes sociais
 $social_icons = [
-    'facebook_url'  => ['fab fa-facebook', '#1877f2'],
-    'instagram_url' => ['fab fa-instagram', '#e4405f'],
-    'linkedin_url'  => ['fab fa-linkedin', '#0a66c2'],
-    'youtube_url'   => ['fab fa-youtube', '#ff0000'],
-    'tiktok_url'    => ['fab fa-tiktok', '#000000'],
-    'twitter_url'   => ['fab fa-x-twitter', '#000000'],
-    'pinterest_url' => ['fab fa-pinterest', '#e60023'],
-    'telegram_url'  => ['fab fa-telegram', '#24a1de'],
+    'facebook_url'  => ['fab fa-facebook',    '#1877f2'],
+    'instagram_url' => ['fab fa-instagram',   '#e4405f'],
+    'linkedin_url'  => ['fab fa-linkedin',    '#0a66c2'],
+    'youtube_url'   => ['fab fa-youtube',     '#ff0000'],
+    'tiktok_url'    => ['fab fa-tiktok',      '#000000'],
+    'twitter_url'   => ['fab fa-x-twitter',   '#000000'],
+    'pinterest_url' => ['fab fa-pinterest',   '#e60023'],
+    'telegram_url'  => ['fab fa-telegram',    '#24a1de'],
     'kwai_url'      => ['fas fa-play-circle', '#ff6a00'],
-    'threads_url'   => ['fab fa-threads', '#000000'],
-    'discord_url'   => ['fab fa-discord', '#5865f2'],
-    'snapchat_url'  => ['fab fa-snapchat', '#fffc00'],
+    'threads_url'   => ['fab fa-threads',     '#000000'],
+    'discord_url'   => ['fab fa-discord',     '#5865f2'],
+    'snapchat_url'  => ['fab fa-snapchat',    '#fffc00'],
 ];
 
-// Campos extras que não vêm do banco mas precisam aparecer na configuração
+// Campos extras que não vêm do banco mas precisam aparecer
 $extra_fields = [
-    [
-        'chave'    => 'empresa_sobre',
-        'descricao'=> 'Sobre a Empresa (texto exibido na seção "Quem Somos")',
-        'grupo'    => 'geral',
-        'tipo'     => 'textarea',
-        'valor'    => get_config('empresa_sobre', ''),
-        'ativo'    => 1,
-    ],
-    [
-        'chave'    => 'empresa_slogan',
-        'descricao'=> 'Slogan / Frase de Destaque da Empresa',
-        'grupo'    => 'geral',
-        'tipo'     => 'text',
-        'valor'    => get_config('empresa_slogan', ''),
-        'ativo'    => 1,
-    ],
-    [
-        'chave' => 'produto_visualizacao',
-        'descricao' => 'Forma de Visualização do Produto (ao clicar em um produto)',
-        'grupo' => 'aparencia',
-        'tipo' => 'select',
-        'valor' => get_config('produto_visualizacao', 'modal'),
-        'opcoes' => json_encode([
-            'modal'             => 'Catálogo Simples (modal sobre a lista) — atual',
-            'pagina_individual' => 'Página Individual do Produto (similar ao WooCommerce) — melhor para SEO',
-        ]),
-        'ativo' => 1,
-    ],
-    [
-        'chave' => 'produtos_navegacao',
-        'descricao' => 'Navegação de Produtos',
-        'grupo' => 'aparencia',
-        'tipo' => 'select',
-        'valor' => get_config('produtos_navegacao', 'paginacao'),
-        'opcoes' => json_encode([
-            'paginacao'       => 'Paginação (botões Anterior / Próximo)',
-            'scroll_infinito' => 'Scroll Infinito (carrega ao rolar a página)',
-        ]),
-        'ativo' => 1,
-    ],
-    [
-        'chave' => 'toast_position',
-        'descricao' => 'Posição do Toast de Produto Adicionado',
-        'grupo' => 'aparencia',
-        'tipo' => 'select',
-        'valor' => get_config('toast_position', 'bottom-right'),
-        'opcoes' => json_encode([
-            'bottom-left'  => 'Rodapé Esquerdo',
-            'bottom-center'=> 'Rodapé Centro',
-            'bottom-right' => 'Rodapé Direito',
-        ]),
-        'ativo' => 1,
-    ],
-    [
-        'chave' => 'alerta_sonoro_orcamento',
-        'descricao' => 'Alerta Sonoro — Novos Orçamentos (toca um som quando um novo orçamento chega; só funciona logado no admin)',
-        'grupo' => 'aparencia',
-        'tipo' => 'select',
-        'valor' => get_config('alerta_sonoro_orcamento', '1'),
-        'opcoes' => json_encode([
-            '1' => 'Ativado',
-            '0' => 'Desativado',
-        ]),
-        'ativo' => 1,
-    ],
+    ['chave'=>'empresa_sobre',           'descricao'=>'Sobre a Empresa (texto exibido na seção "Quem Somos")',  'grupo'=>'geral',     'tipo'=>'textarea','valor'=>get_config('empresa_sobre',''),           'ativo'=>1],
+    ['chave'=>'empresa_slogan',          'descricao'=>'Slogan / Frase de Destaque da Empresa',                  'grupo'=>'geral',     'tipo'=>'text',    'valor'=>get_config('empresa_slogan',''),           'ativo'=>1],
+    ['chave'=>'produto_visualizacao',    'descricao'=>'Visualização do Produto ao clicar',                      'grupo'=>'aparencia', 'tipo'=>'select',  'valor'=>get_config('produto_visualizacao','modal'), 'ativo'=>1,
+     'opcoes'=>json_encode(['modal'=>'Catálogo Simples (modal) — atual','pagina_individual'=>'Página Individual (melhor para SEO)'])],
+    ['chave'=>'produtos_navegacao',      'descricao'=>'Navegação de Produtos',                                  'grupo'=>'aparencia', 'tipo'=>'select',  'valor'=>get_config('produtos_navegacao','paginacao'),'ativo'=>1,
+     'opcoes'=>json_encode(['paginacao'=>'Paginação (Anterior / Próximo)','scroll_infinito'=>'Scroll Infinito'])],
+    ['chave'=>'toast_position',          'descricao'=>'Posição do Toast de Produto Adicionado',                 'grupo'=>'aparencia', 'tipo'=>'select',  'valor'=>get_config('toast_position','bottom-right'), 'ativo'=>1,
+     'opcoes'=>json_encode(['bottom-left'=>'Rodapé Esquerdo','bottom-center'=>'Rodapé Centro','bottom-right'=>'Rodapé Direito'])],
+    ['chave'=>'alerta_sonoro_orcamento', 'descricao'=>'Alerta Sonoro — Novos Orçamentos',                       'grupo'=>'aparencia', 'tipo'=>'select',  'valor'=>get_config('alerta_sonoro_orcamento','1'),   'ativo'=>1,
+     'opcoes'=>json_encode(['1'=>'Ativado','0'=>'Desativado'])],
 ];
 
-// Mesclar campos extras
 $configuracoes = array_merge($configuracoes, $extra_fields);
-
-// Reordenar
-usort($configuracoes, function($a, $b) {
-    $order = ['geral' => 1, 'contato' => 2, 'social' => 3, 'aparencia' => 4];
+usort($configuracoes, function ($a, $b) {
+    $order = ['geral'=>1,'contato'=>2,'social'=>3,'aparencia'=>4];
     $oa = $order[$a['grupo']] ?? 5;
     $ob = $order[$b['grupo']] ?? 5;
-    if ($oa !== $ob) return $oa - $ob;
-    return ($a['ordem'] ?? 0) - ($b['ordem'] ?? 0);
+    return $oa !== $ob ? $oa - $ob : (($a['ordem']??0) - ($b['ordem']??0));
 });
 
 require_once __DIR__ . '/includes/header.php';
@@ -166,6 +134,8 @@ require_once __DIR__ . '/includes/header.php';
 <div class="card">
     <div class="card-body">
         <form method="POST" enctype="multipart/form-data">
+
+            <?php /* ── Grupos Geral / Contato / Social / Aparência ── */ ?>
             <?php
             $grupo_atual = '';
             foreach ($configuracoes as $cfg):
@@ -179,45 +149,250 @@ require_once __DIR__ . '/includes/header.php';
             </h3>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
             <?php endif; ?>
-                <div class="form-group" style="<?php echo in_array($cfg['tipo'],['textarea','file'])?'grid-column:1/-1;':''; ?>">
+                <div class="form-group" style="<?php echo in_array($cfg['tipo'],['textarea','file']) ? 'grid-column:1/-1;' : ''; ?>">
                     <label>
-                        <?php if ($cfg['grupo'] === 'social' && isset($social_icons[$cfg['chave']])): 
-                            [$ico, $cor] = $social_icons[$cfg['chave']]; ?>
+                        <?php if ($cfg['grupo'] === 'social' && isset($social_icons[$cfg['chave']])): [$ico,$cor] = $social_icons[$cfg['chave']]; ?>
                         <i class="<?php echo $ico; ?>" style="color:<?php echo $cor; ?>;margin-right:6px;font-size:1rem;"></i>
                         <?php endif; ?>
                         <?php echo sanitize($cfg['descricao'] ?: $cfg['chave']); ?>
                     </label>
                     <?php if ($cfg['tipo'] === 'textarea'): ?>
-                    <textarea name="config[<?php echo $cfg['chave']; ?>]" rows="3"><?php echo sanitize($cfg['valor']); ?></textarea>
+                        <textarea name="config[<?php echo $cfg['chave']; ?>]" rows="3"><?php echo sanitize($cfg['valor']); ?></textarea>
                     <?php elseif ($cfg['tipo'] === 'file'): ?>
-                    <input type="file" name="config[<?php echo $cfg['chave']; ?>]" accept="image/*">
-                    <?php if (!empty($cfg['valor'])): ?>
-                    <img src="<?php echo uploads_url($cfg['valor']); ?>" alt="Logo" style="max-height:60px;border-radius:8px;margin-top:8px;display:block;">
-                    <?php endif; ?>
+                        <input type="file" name="config[<?php echo $cfg['chave']; ?>]" accept="image/*">
+                        <?php if (!empty($cfg['valor'])): ?>
+                        <img src="<?php echo uploads_url($cfg['valor']); ?>" alt="Logo" style="max-height:60px;border-radius:8px;margin-top:8px;display:block;">
+                        <?php endif; ?>
                     <?php elseif ($cfg['tipo'] === 'color'): ?>
-                    <div style="display:flex;align-items:center;gap:10px;">
-                        <input type="color" name="config[<?php echo $cfg['chave']; ?>]" value="<?php echo sanitize($cfg['valor']?:'#3b82f6'); ?>" style="width:60px;height:40px;padding:2px;border:1px solid var(--gray-200);border-radius:6px;">
-                        <span style="font-size:0.875rem;color:var(--gray-500);"><?php echo sanitize($cfg['valor']); ?></span>
-                    </div>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <input type="color" name="config[<?php echo $cfg['chave']; ?>]" value="<?php echo sanitize($cfg['valor']?:'#3b82f6'); ?>" style="width:60px;height:40px;padding:2px;border:1px solid var(--gray-200);border-radius:6px;">
+                            <span style="font-size:0.875rem;color:var(--gray-500);"><?php echo sanitize($cfg['valor']); ?></span>
+                        </div>
                     <?php elseif ($cfg['tipo'] === 'select' && !empty($cfg['opcoes'])): ?>
-                    <select name="config[<?php echo $cfg['chave']; ?>]">
-                        <?php foreach (json_decode($cfg['opcoes'],true)??[] as $v=>$l): ?>
-                        <option value="<?php echo $v; ?>" <?php echo selected($cfg['valor'],$v); ?>><?php echo $l; ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                        <select name="config[<?php echo $cfg['chave']; ?>]">
+                            <?php foreach (json_decode($cfg['opcoes'],true)??[] as $v=>$l): ?>
+                            <option value="<?php echo $v; ?>" <?php echo selected($cfg['valor'],$v); ?>><?php echo $l; ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     <?php elseif ($cfg['tipo'] === 'number'): ?>
-                    <input type="number" name="config[<?php echo $cfg['chave']; ?>]" value="<?php echo (int)$cfg['valor']; ?>">
+                        <input type="number" name="config[<?php echo $cfg['chave']; ?>]" value="<?php echo (int)$cfg['valor']; ?>">
                     <?php else: ?>
-                    <input type="text" name="config[<?php echo $cfg['chave']; ?>]" value="<?php echo sanitize($cfg['valor']); ?>">
+                        <input type="text" name="config[<?php echo $cfg['chave']; ?>]" value="<?php echo sanitize($cfg['valor']); ?>">
                     <?php endif; ?>
                 </div>
             <?php endforeach; if ($grupo_atual) echo '</div>'; ?>
 
-            <div class="form-actions" style="margin-top:24px;">
+            <?php /* ═══════════════════════════════════════════════════
+                       SEÇÃO EMAIL — SMTP + IMAP (id="email" para âncora)
+                   ═══════════════════════════════════════════════════ */ ?>
+            <h3 id="email" style="margin:28px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--gray-200);color:var(--gray-900);font-size:1rem;font-weight:700;">
+                <i class="fas fa-chevron-right" style="color:var(--primary);margin-right:6px;font-size:0.875rem;"></i>Email — Envio e Recebimento
+            </h3>
+
+            <?php /* ── SMTP ── */ ?>
+            <div style="margin-bottom:8px;">
+                <span style="display:inline-block;font-size:0.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-500);margin-bottom:10px;">
+                    <i class="fas fa-paper-plane" style="margin-right:4px;color:#3b82f6;"></i>Envio (SMTP)
+                </span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+                <div class="form-group">
+                    <label>Servidor SMTP <small style="color:var(--gray-400);">ex: mail.seudominio.com</small></label>
+                    <input type="text" name="config[smtp_host]" value="<?php echo sanitize(get_config('smtp_host','')); ?>" placeholder="mail.seudominio.com">
+                </div>
+                <div class="form-group">
+                    <label>Porta <small style="color:var(--gray-400);">587=TLS · 465=SSL · 25=sem</small></label>
+                    <input type="number" name="config[smtp_port]" value="<?php echo (int)get_config('smtp_port',587) ?: 587; ?>" placeholder="587">
+                </div>
+                <div class="form-group">
+                    <label>Criptografia</label>
+                    <select name="config[smtp_encryption]">
+                        <?php foreach (['tls'=>'TLS (porta 587)','ssl'=>'SSL (porta 465)',''=>'Nenhuma (porta 25)'] as $v=>$l): ?>
+                        <option value="<?php echo $v; ?>" <?php echo selected(get_config('smtp_encryption','tls'),$v); ?>><?php echo $l; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Usuário SMTP (email completo)</label>
+                    <input type="email" name="config[smtp_user]" value="<?php echo sanitize(get_config('smtp_user','')); ?>" placeholder="contato@seudominio.com">
+                </div>
+                <div class="form-group">
+                    <label>Senha SMTP</label>
+                    <div style="position:relative;">
+                        <input type="password" id="smtp_pass_input" name="config[smtp_pass]" value="<?php echo sanitize(get_config('smtp_pass','')); ?>" placeholder="••••••••" style="padding-right:40px;width:100%;">
+                        <button type="button" onclick="toggleSenha('smtp_pass_input','smtp_pass_eye')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--gray-400);">
+                            <i class="fas fa-eye" id="smtp_pass_eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Nome do remetente <small style="color:var(--gray-400);">vazio = usa site_nome</small></label>
+                    <input type="text" name="config[site_nome_email]" value="<?php echo sanitize(get_config('site_nome_email','')); ?>" placeholder="<?php echo sanitize(get_config('site_nome','SiteCatalogo')); ?>">
+                </div>
+            </div>
+
+            <?php /* Teste SMTP */ ?>
+            <div style="margin-bottom:24px;padding:14px 16px;background:var(--gray-50);border-radius:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:200px;">
+                    <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--gray-600);margin-bottom:4px;">Testar envio SMTP</label>
+                    <input type="email" id="smtp_test_email" placeholder="seu@email.com" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:0.875rem;">
+                </div>
+                <button type="button" class="btn btn-outline btn-sm" style="margin-top:20px;" onclick="testarSmtp()">
+                    <i class="fas fa-paper-plane"></i> Enviar teste
+                </button>
+                <span id="smtp_status" style="font-size:0.875rem;margin-top:20px;"></span>
+            </div>
+
+            <?php /* ── IMAP ── */ ?>
+            <div style="margin-bottom:8px;">
+                <span style="display:inline-block;font-size:0.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-500);margin-bottom:10px;">
+                    <i class="fas fa-inbox" style="margin-right:4px;color:#10b981;"></i>Recebimento (IMAP)
+                </span>
+                <?php if (!function_exists('imap_open')): ?>
+                <div style="display:inline-block;margin-left:12px;padding:4px 10px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;font-size:0.75rem;color:#92400e;">
+                    <i class="fas fa-exclamation-triangle"></i> Extensão IMAP não habilitada — ative <code>extension=imap</code> no php.ini
+                </div>
+                <?php else: ?>
+                <div style="display:inline-block;margin-left:12px;padding:4px 10px;background:#f0fdf4;border:1px solid #22c55e;border-radius:6px;font-size:0.75rem;color:#166534;">
+                    <i class="fas fa-check-circle"></i> Extensão IMAP disponível
+                </div>
+                <?php endif; ?>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;">
+                <div class="form-group">
+                    <label>Servidor IMAP <small style="color:var(--gray-400);">ex: mail.seudominio.com</small></label>
+                    <input type="text" name="config[imap_host]" value="<?php echo sanitize(get_config('imap_host','')); ?>" placeholder="mail.seudominio.com">
+                </div>
+                <div class="form-group">
+                    <label>Porta <small style="color:var(--gray-400);">993=SSL · 143=TLS/sem</small></label>
+                    <input type="number" name="config[imap_port]" value="<?php echo (int)get_config('imap_port',993) ?: 993; ?>" placeholder="993">
+                </div>
+                <div class="form-group">
+                    <label>Usar SSL</label>
+                    <select name="config[imap_ssl]">
+                        <option value="1" <?php echo selected(get_config('imap_ssl','1'),'1'); ?>>Sim — SSL/TLS (porta 993)</option>
+                        <option value="0" <?php echo selected(get_config('imap_ssl','1'),'0'); ?>>Não — sem SSL (porta 143)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Usuário IMAP (email completo)</label>
+                    <input type="email" name="config[imap_user]" value="<?php echo sanitize(get_config('imap_user','')); ?>" placeholder="contato@seudominio.com">
+                </div>
+                <div class="form-group">
+                    <label>Senha IMAP</label>
+                    <div style="position:relative;">
+                        <input type="password" id="imap_pass_input" name="config[imap_pass]" value="<?php echo sanitize(get_config('imap_pass','')); ?>" placeholder="••••••••" style="padding-right:40px;width:100%;">
+                        <button type="button" onclick="toggleSenha('imap_pass_input','imap_pass_eye')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--gray-400);">
+                            <i class="fas fa-eye" id="imap_pass_eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Pasta padrão</label>
+                    <input type="text" name="config[imap_folder]" value="<?php echo sanitize(get_config('imap_folder','INBOX')); ?>" placeholder="INBOX">
+                </div>
+            </div>
+
+            <?php /* Pastas especiais IMAP */ ?>
+            <details style="margin-bottom:16px;">
+                <summary style="cursor:pointer;font-size:0.875rem;color:var(--gray-600);font-weight:600;padding:6px 0;user-select:none;">
+                    <i class="fas fa-folder-open" style="color:var(--gray-400);margin-right:4px;"></i>
+                    Nomes das pastas especiais no servidor
+                    <small style="font-weight:400;color:var(--gray-400);"> — Gmail: Sent Mail / Spam / Trash · cPanel: Sent / Junk / Trash</small>
+                </summary>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px;padding:14px;background:var(--gray-50);border-radius:8px;">
+                    <?php foreach ([
+                        'imap_folder_sent'    => ['Enviados',  'Sent'],
+                        'imap_folder_drafts'  => ['Rascunhos', 'Drafts'],
+                        'imap_folder_archive' => ['Arquivo',   'Archive'],
+                        'imap_folder_spam'    => ['Spam',      'Junk'],
+                        'imap_folder_trash'   => ['Lixeira',   'Trash'],
+                    ] as $key => [$label, $default]): ?>
+                    <div class="form-group" style="margin:0;">
+                        <label style="font-size:0.8rem;"><?php echo $label; ?></label>
+                        <input type="text" name="config[<?php echo $key; ?>]"
+                               value="<?php echo sanitize(get_config($key, $default)); ?>"
+                               placeholder="<?php echo $default; ?>">
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </details>
+
+            <?php /* Teste IMAP */ ?>
+            <div style="margin-bottom:28px;padding:14px 16px;background:var(--gray-50);border-radius:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div style="font-size:0.875rem;color:var(--gray-600);font-weight:600;">
+                    <i class="fas fa-plug" style="color:#10b981;margin-right:4px;"></i>Testar conexão IMAP
+                </div>
+                <button type="button" class="btn btn-outline btn-sm" onclick="testarImap()" <?php echo !function_exists('imap_open') ? 'disabled title="Extensão IMAP não disponível"' : ''; ?>>
+                    <i class="fas fa-sync"></i> Testar agora
+                </button>
+                <span id="imap_status" style="font-size:0.875rem;"></span>
+            </div>
+
+            <div class="form-actions" style="margin-top:8px;">
                 <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save"></i> Salvar Configurações</button>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+// Mostrar/ocultar senhas
+function toggleSenha(inputId, iconId) {
+    const inp  = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+    if (inp.type === 'password') {
+        inp.type = 'text';
+        icon.className = 'fas fa-eye-slash';
+    } else {
+        inp.type = 'password';
+        icon.className = 'fas fa-eye';
+    }
+}
+
+// Teste SMTP
+function testarSmtp() {
+    const para   = document.getElementById('smtp_test_email').value.trim();
+    const status = document.getElementById('smtp_status');
+    if (!para) { status.innerHTML = '<span style="color:#ef4444">Informe um email de destino.</span>'; return; }
+    status.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+    fetch('email_teste_smtp.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ para })
+    })
+    .then(r => r.json())
+    .then(d => {
+        status.innerHTML = d.ok
+            ? '<span style="color:#10b981"><i class="fas fa-check-circle"></i> Enviado! Verifique a caixa de entrada.</span>'
+            : '<span style="color:#ef4444"><i class="fas fa-times-circle"></i> ' + d.erro + '</span>';
+    })
+    .catch(() => { status.innerHTML = '<span style="color:#ef4444"><i class="fas fa-times-circle"></i> Erro de rede.</span>'; });
+}
+
+// Teste IMAP
+function testarImap() {
+    const status = document.getElementById('imap_status');
+    const host   = document.querySelector('[name="config[imap_host]"]').value.trim();
+    const port   = document.querySelector('[name="config[imap_port]"]').value.trim();
+    const user   = document.querySelector('[name="config[imap_user]"]').value.trim();
+    const pass   = document.querySelector('[name="config[imap_pass]"]').value.trim();
+    const ssl    = document.querySelector('[name="config[imap_ssl]"]').value;
+    if (!host || !user) { status.innerHTML = '<span style="color:#ef4444">Preencha host e usuário IMAP primeiro.</span>'; return; }
+    status.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testando...';
+    fetch('email_teste_imap.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ host, port, user, pass, ssl })
+    })
+    .then(r => r.json())
+    .then(d => {
+        status.innerHTML = d.ok
+            ? '<span style="color:#10b981"><i class="fas fa-check-circle"></i> Conexão OK! ' + d.total + ' mensagens encontradas.</span>'
+            : '<span style="color:#ef4444"><i class="fas fa-times-circle"></i> ' + d.erro + '</span>';
+    })
+    .catch(() => { status.innerHTML = '<span style="color:#ef4444"><i class="fas fa-times-circle"></i> Erro de rede.</span>'; });
+}
+</script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

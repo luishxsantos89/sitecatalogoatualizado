@@ -1,15 +1,15 @@
 -- ============================================================
--- SiteCatalogo - Banco de Dados Completo (DEFINITIVO v2.4)
+-- SiteCatalogo - Banco de Dados Completo (DEFINITIVO v2.6)
 -- Prefixo: sc_  |  Charset: utf8mb4  |  Engine: InnoDB
 --
--- CORREÇÕES DESTA VERSÃO:
---   • Sincronizado 100% com banco de dados real (HeidiSQL)
---   • Sincronizado com código PHP do GitHub e local
---   • sc_orcamentos: cliente_cidade confirmado
---   • sc_orcamentos: cliente_estado ADICIONADO
---   • sc_clientes: nome_razaosocial NOT NULL + nome DEFAULT ''
---   • sc_configuracoes: orcamento_whatsapp_msg adicionado
---   • Todas as 15 tabelas verificadas e validadas
+-- NOVIDADES v2.6:
+--   • sc_emails: imap_uid + reply_to_id adicionados
+--   • sc_configuracoes: SMTP renomeado para padrão (smtp_host,
+--     smtp_port, smtp_user, smtp_pass, smtp_encryption)
+--   • sc_configuracoes: bloco IMAP completo adicionado
+--     (imap_host, imap_port, imap_ssl, imap_user, imap_pass,
+--      imap_folder, imap_folder_sent/drafts/archive/spam/trash)
+--   • Grupo 'email' unificado: SMTP + IMAP na mesma seção
 --
 -- COMO USAR:
 --   1. Apague o banco completamente (DROP DATABASE sitecatalogo)
@@ -144,7 +144,7 @@ CREATE TABLE `sc_produto_estoque` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
--- sc_clientes  (DEFINITIVO - nome_razaosocial OBRIGATÓRIO)
+-- sc_clientes  (nome_razaosocial OBRIGATÓRIO)
 -- ============================================================
 DROP TABLE IF EXISTS `sc_clientes`;
 CREATE TABLE `sc_clientes` (
@@ -238,7 +238,7 @@ CREATE TABLE `sc_orcamento_itens` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
--- sc_banners  (DEFINITIVO - popup_freq_max + popup_intervalo)
+-- sc_banners
 -- ============================================================
 DROP TABLE IF EXISTS `sc_banners`;
 CREATE TABLE `sc_banners` (
@@ -273,7 +273,7 @@ CREATE TABLE `sc_configuracoes` (
   `valor` text DEFAULT NULL,
   `descricao` varchar(255) DEFAULT NULL,
   `grupo` varchar(50) DEFAULT 'geral',
-  `tipo` enum('text','textarea','file','select','number','color') DEFAULT 'text',
+  `tipo` enum('text','textarea','file','select','number','color','password') DEFAULT 'text',
   `opcoes` text DEFAULT NULL COMMENT 'JSON para campos do tipo select',
   `ordem` int(11) DEFAULT 0,
   `ativo` tinyint(1) DEFAULT 1,
@@ -284,46 +284,69 @@ CREATE TABLE `sc_configuracoes` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `sc_configuracoes` (`chave`, `valor`, `descricao`, `grupo`, `tipo`, `ordem`, `ativo`) VALUES
-('site_nome', 'SiteCatalogo', 'Nome do site', 'geral', 'text', 1, 1),
-('site_descricao', 'Catálogo de produtos online', 'Descrição do site', 'geral', 'textarea', 2, 1),
-('mostrar_preco', '1', 'Mostrar preços no catálogo', 'geral', 'select', 3, 1),
-('moeda', 'BRL', 'Moeda padrão', 'geral', 'select', 4, 1),
-('empresa_sobre', '', 'Sobre a Empresa (seção Quem Somos)', 'geral', 'textarea', 5, 1),
-('empresa_slogan', '', 'Slogan / Frase de Destaque', 'geral', 'text', 6, 1),
-('whatsapp', '', 'WhatsApp para contato', 'contato', 'text', 1, 1),
-('email_contato', '', 'E-mail de contato', 'contato', 'text', 2, 1),
-('telefone', '', 'Telefone fixo', 'contato', 'text', 3, 1),
-('endereco', '', 'Endereço da empresa', 'contato', 'textarea', 4, 1),
-('horario_atendimento', 'Segunda a Sexta: 08h às 18h', 'Horário de atendimento', 'contato', 'text', 5, 1),
-('facebook_url', '', 'Facebook', 'social', 'text', 1, 1),
-('instagram_url', '', 'Instagram', 'social', 'text', 2, 1),
-('linkedin_url', '', 'LinkedIn', 'social', 'text', 3, 1),
-('youtube_url', '', 'YouTube', 'social', 'text', 4, 1),
-('tiktok_url', '', 'TikTok', 'social', 'text', 5, 1),
-('twitter_url', '', 'Twitter / X', 'social', 'text', 6, 1),
-('pinterest_url', '', 'Pinterest', 'social', 'text', 7, 1),
-('telegram_url', '', 'Telegram', 'social', 'text', 8, 1),
-('kwai_url', '', 'Kwai', 'social', 'text', 9, 1),
-('threads_url', '', 'Threads', 'social', 'text', 10, 1),
-('discord_url', '', 'Discord', 'social', 'text', 11, 1),
-('cor_primaria', '#3b82f6', 'Cor primária', 'aparencia', 'color', 1, 1),
-('logo_cliente', '', 'Logo do cliente', 'aparencia', 'file', 2, 1),
-('navbar_tipo', 'imagem_texto', 'Tipo de navbar', 'aparencia', 'select', 3, 1),
-('categoria_layout', 'sidebar', 'Layout das Categorias', 'aparencia', 'select', 4, 1),
-('produto_visualizacao', 'modal', 'Forma de Visualização do Produto', 'aparencia', 'select', 5, 1),
-('produtos_navegacao', 'paginacao', 'Navegação de Produtos', 'aparencia', 'select', 6, 1),
-('toast_position', 'bottom-right', 'Posição do Toast de Produto Adicionado', 'aparencia', 'select', 7, 1),
-('alerta_sonoro_orcamento', '1', 'Alerta sonoro — novos orçamentos', 'aparencia', 'select', 8, 1),
-('orcamento_whatsapp_msg', 'Olá! Recebemos seu orçamento. Em breve entraremos em contato.', 'Mensagem padrão do WhatsApp para orçamentos', 'orcamento', 'textarea', 1, 1),
-('custom_head_scripts', '', 'Scripts no <head> (ex: Google Analytics)', 'seo', 'textarea', 1, 1),
-('custom_body_scripts', '', 'Scripts antes do </body>', 'seo', 'textarea', 2, 1),
-('custom_css', '', 'CSS personalizado', 'seo', 'textarea', 3, 1),
-('smtp_host', '', 'Servidor SMTP', 'email', 'text', 1, 1),
-('smtp_porta', '', 'Porta SMTP', 'email', 'number', 2, 1),
-('smtp_usuario', '', 'Usuário SMTP', 'email', 'text', 3, 1),
-('smtp_senha', '', 'Senha SMTP', 'email', 'text', 4, 1),
-('smtp_seguranca', '', 'Segurança (tls / ssl)', 'email', 'text', 5, 1);
+-- Geral
+('site_nome',              'SiteCatalogo',                           'Nome do site',                                        'geral',     'text',     1,  1),
+('site_descricao',         'Catálogo de produtos online',            'Descrição do site',                                   'geral',     'textarea', 2,  1),
+('mostrar_preco',          '1',                                      'Mostrar preços no catálogo',                          'geral',     'select',   3,  1),
+('moeda',                  'BRL',                                    'Moeda padrão',                                        'geral',     'select',   4,  1),
+('empresa_sobre',          '',                                       'Sobre a Empresa (seção Quem Somos)',                  'geral',     'textarea', 5,  1),
+('empresa_slogan',         '',                                       'Slogan / Frase de Destaque',                          'geral',     'text',     6,  1),
+-- Contato
+('whatsapp',               '',                                       'WhatsApp para contato',                               'contato',   'text',     1,  1),
+('email_contato',          '',                                       'E-mail de contato (remetente padrão)',                'contato',   'text',     2,  1),
+('telefone',               '',                                       'Telefone fixo',                                       'contato',   'text',     3,  1),
+('endereco',               '',                                       'Endereço da empresa',                                 'contato',   'textarea', 4,  1),
+('horario_atendimento',    'Segunda a Sexta: 08h às 18h',            'Horário de atendimento',                              'contato',   'text',     5,  1),
+-- Redes sociais
+('facebook_url',           '',                                       'Facebook',                                            'social',    'text',     1,  1),
+('instagram_url',          '',                                       'Instagram',                                           'social',    'text',     2,  1),
+('linkedin_url',           '',                                       'LinkedIn',                                            'social',    'text',     3,  1),
+('youtube_url',            '',                                       'YouTube',                                             'social',    'text',     4,  1),
+('tiktok_url',             '',                                       'TikTok',                                              'social',    'text',     5,  1),
+('twitter_url',            '',                                       'Twitter / X',                                         'social',    'text',     6,  1),
+('pinterest_url',          '',                                       'Pinterest',                                           'social',    'text',     7,  1),
+('telegram_url',           '',                                       'Telegram',                                            'social',    'text',     8,  1),
+('kwai_url',               '',                                       'Kwai',                                                'social',    'text',     9,  1),
+('threads_url',            '',                                       'Threads',                                             'social',    'text',     10, 1),
+('discord_url',            '',                                       'Discord',                                             'social',    'text',     11, 1),
+('snapchat_url',           '',                                       'Snapchat',                                            'social',    'text',     12, 1),
+-- Aparência
+('cor_primaria',           '#3b82f6',                                'Cor primária',                                        'aparencia', 'color',    1,  1),
+('logo_cliente',           '',                                       'Logo do cliente',                                     'aparencia', 'file',     2,  1),
+('navbar_tipo',            'imagem_texto',                           'Tipo de navbar',                                      'aparencia', 'select',   3,  1),
+('categoria_layout',       'sidebar',                                'Layout das Categorias',                               'aparencia', 'select',   4,  1),
+('produto_visualizacao',   'modal',                                  'Forma de Visualização do Produto',                    'aparencia', 'select',   5,  1),
+('produtos_navegacao',     'paginacao',                              'Navegação de Produtos',                               'aparencia', 'select',   6,  1),
+('toast_position',         'bottom-right',                           'Posição do Toast de Produto Adicionado',              'aparencia', 'select',   7,  1),
+('alerta_sonoro_orcamento','1',                                      'Alerta sonoro — novos orçamentos',                    'aparencia', 'select',   8,  1),
+-- Orçamento
+('orcamento_whatsapp_msg', 'Olá! Recebemos seu orçamento. Em breve entraremos em contato.',
+                                                                     'Mensagem padrão WhatsApp para orçamentos',            'orcamento', 'textarea', 1,  1),
+-- SEO
+('custom_head_scripts',    '',                                       'Scripts no <head> (ex: Google Analytics)',            'seo',       'textarea', 1,  1),
+('custom_body_scripts',    '',                                       'Scripts antes do </body>',                            'seo',       'textarea', 2,  1),
+('custom_css',             '',                                       'CSS personalizado',                                   'seo',       'textarea', 3,  1),
+-- Email — SMTP (envio)
+('smtp_host',              '',                                       'Servidor SMTP',                                       'email',     'text',     1,  1),
+('smtp_port',              '587',                                    'Porta SMTP (587=TLS, 465=SSL, 25=sem criptografia)',  'email',     'number',   2,  1),
+('smtp_user',              '',                                       'Usuário SMTP (email completo)',                       'email',     'text',     3,  1),
+('smtp_pass',              '',                                       'Senha SMTP',                                          'email',     'password', 4,  1),
+('smtp_encryption',        'tls',                                    'Criptografia SMTP',                                   'email',     'select',   5,  1),
+('site_nome_email',        '',                                       'Nome exibido no remetente (deixe vazio = site_nome)', 'email',     'text',     6,  1),
+-- Email — IMAP (recebimento)
+('imap_host',              '',                                       'Servidor IMAP',                                       'email',     'text',     10, 1),
+('imap_port',              '993',                                    'Porta IMAP (993=SSL, 143=TLS/sem)',                   'email',     'number',   11, 1),
+('imap_ssl',               '1',                                      'Usar SSL no IMAP',                                    'email',     'select',   12, 1),
+('imap_user',              '',                                       'Usuário IMAP (email completo)',                       'email',     'text',     13, 1),
+('imap_pass',              '',                                       'Senha IMAP',                                          'email',     'password', 14, 1),
+('imap_folder',            'INBOX',                                  'Pasta padrão IMAP',                                   'email',     'text',     15, 1),
+('imap_folder_sent',       'Sent',                                   'Pasta Enviados no servidor',                          'email',     'text',     16, 1),
+('imap_folder_drafts',     'Drafts',                                 'Pasta Rascunhos no servidor',                         'email',     'text',     17, 1),
+('imap_folder_archive',    'Archive',                                'Pasta Arquivo no servidor',                           'email',     'text',     18, 1),
+('imap_folder_spam',       'Junk',                                   'Pasta Spam no servidor (Junk ou Spam)',               'email',     'text',     19, 1),
+('imap_folder_trash',      'Trash',                                  'Pasta Lixeira no servidor',                           'email',     'text',     20, 1);
 
+-- Opções dos campos select
 UPDATE `sc_configuracoes` SET `opcoes` = '{"1":"Sim — Mostrar preços","0":"Não — Ocultar preços"}' WHERE `chave` = 'mostrar_preco';
 UPDATE `sc_configuracoes` SET `opcoes` = '{"BRL":"R$ — Real Brasileiro","USD":"$ — Dólar","EUR":"€ — Euro"}' WHERE `chave` = 'moeda';
 UPDATE `sc_configuracoes` SET `opcoes` = '{"imagem_texto":"Logo + Nome","imagem":"Apenas Logo","texto":"Apenas Nome"}' WHERE `chave` = 'navbar_tipo';
@@ -332,6 +355,8 @@ UPDATE `sc_configuracoes` SET `opcoes` = '{"modal":"Catálogo Simples (modal sob
 UPDATE `sc_configuracoes` SET `opcoes` = '{"paginacao":"Paginação (Anterior / Próximo)","scroll_infinito":"Scroll Infinito (carrega ao rolar)"}' WHERE `chave` = 'produtos_navegacao';
 UPDATE `sc_configuracoes` SET `opcoes` = '{"top-left":"Topo Esquerdo","top-center":"Topo Centro","top-right":"Topo Direito","bottom-left":"Rodapé Esquerdo","bottom-center":"Rodapé Centro","bottom-right":"Rodapé Direito"}' WHERE `chave` = 'toast_position';
 UPDATE `sc_configuracoes` SET `opcoes` = '{"1":"Ativado","0":"Desativado"}' WHERE `chave` = 'alerta_sonoro_orcamento';
+UPDATE `sc_configuracoes` SET `opcoes` = '{"tls":"TLS (porta 587)","ssl":"SSL (porta 465)","":"Nenhuma (porta 25)"}' WHERE `chave` = 'smtp_encryption';
+UPDATE `sc_configuracoes` SET `opcoes` = '{"1":"Sim — SSL/TLS (porta 993)","0":"Não — sem SSL (porta 143)"}' WHERE `chave` = 'imap_ssl';
 
 -- ============================================================
 -- sc_financeiro_categorias
@@ -347,18 +372,18 @@ CREATE TABLE `sc_financeiro_categorias` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `sc_financeiro_categorias` (`nome`, `tipo`, `cor`) VALUES
-('Vendas de Produtos', 'receita', '#22c55e'),
+('Vendas de Produtos',   'receita', '#22c55e'),
 ('Orçamentos Aprovados', 'receita', '#3b82f6'),
-('Serviços Prestados', 'receita', '#8b5cf6'),
-('Outras Receitas', 'receita', '#06b6d4'),
-('Aluguel', 'despesa', '#ef4444'),
-('Salários', 'despesa', '#f97316'),
-('Fornecedores', 'despesa', '#f59e0b'),
-('Contas de Consumo', 'despesa', '#64748b'),
-('Marketing', 'despesa', '#ec4899'),
-('Impostos e Taxas', 'despesa', '#dc2626'),
-('Compra de Estoque', 'despesa', '#92400e'),
-('Outras Despesas', 'despesa', '#6b7280');
+('Serviços Prestados',   'receita', '#8b5cf6'),
+('Outras Receitas',      'receita', '#06b6d4'),
+('Aluguel',              'despesa', '#ef4444'),
+('Salários',             'despesa', '#f97316'),
+('Fornecedores',         'despesa', '#f59e0b'),
+('Contas de Consumo',    'despesa', '#64748b'),
+('Marketing',            'despesa', '#ec4899'),
+('Impostos e Taxas',     'despesa', '#dc2626'),
+('Compra de Estoque',    'despesa', '#92400e'),
+('Outras Despesas',      'despesa', '#6b7280');
 
 -- ============================================================
 -- sc_financeiro_contas
@@ -380,7 +405,7 @@ CREATE TABLE `sc_financeiro_contas` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `sc_financeiro_contas` (`nome`, `tipo`, `saldo_inicial`, `saldo_atual`, `cor`) VALUES
-('Caixa', 'caixa', 0.00, 0.00, '#22c55e'),
+('Caixa',          'caixa',    0.00, 0.00, '#22c55e'),
 ('Conta Corrente', 'corrente', 0.00, 0.00, '#3b82f6');
 
 -- ============================================================
@@ -410,13 +435,13 @@ CREATE TABLE `sc_financeiro_lancamentos` (
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_tipo` (`tipo`),
-  KEY `idx_status` (`status`),
+  KEY `idx_tipo`       (`tipo`),
+  KEY `idx_status`     (`status`),
   KEY `idx_vencimento` (`data_vencimento`),
-  KEY `idx_categoria` (`categoria_id`),
-  KEY `idx_conta` (`conta_id`),
-  KEY `idx_cliente` (`cliente_id`),
-  KEY `idx_orcamento` (`orcamento_id`)
+  KEY `idx_categoria`  (`categoria_id`),
+  KEY `idx_conta`      (`conta_id`),
+  KEY `idx_cliente`    (`cliente_id`),
+  KEY `idx_orcamento`  (`orcamento_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -437,11 +462,13 @@ CREATE TABLE `sc_atividades_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
--- sc_emails
+-- sc_emails  (v2.6 — IMAP real: imap_uid + reply_to_id)
 -- ============================================================
 DROP TABLE IF EXISTS `sc_emails`;
 CREATE TABLE `sc_emails` (
   `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `imap_uid` bigint(20) unsigned DEFAULT NULL COMMENT 'UID único no servidor IMAP (NULL = gerado internamente)',
+  `reply_to_id` int(11) unsigned DEFAULT NULL COMMENT 'ID do email original ao qual este é resposta',
   `remetente_nome` varchar(255) DEFAULT '',
   `remetente_email` varchar(255) DEFAULT '',
   `destinatario_email` varchar(255) DEFAULT '',
@@ -453,16 +480,18 @@ CREATE TABLE `sc_emails` (
   `data_envio` datetime DEFAULT CURRENT_TIMESTAMP,
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_pasta` (`pasta`),
-  KEY `idx_status` (`status`),
-  KEY `idx_starred` (`starred`)
+  UNIQUE KEY `uk_imap_uid_pasta` (`imap_uid`, `pasta`) COMMENT 'Evita duplicatas na sincronização IMAP',
+  KEY `idx_pasta`    (`pasta`),
+  KEY `idx_status`   (`status`),
+  KEY `idx_starred`  (`starred`),
+  KEY `idx_reply`    (`reply_to_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
 SET FOREIGN_KEY_CHECKS = 1;
 -- ============================================================
 -- FIM DO SCHEMA DEFINITIVO
--- Versão: 2.5  |  Atualizado: 2026-06-18
+-- Versão: 2.6  |  Atualizado: 2026-06-19
 -- Garantias:
 --   • sc_clientes.nome_razaosocial: NOT NULL (sem DEFAULT, obrigatório)
 --   • sc_clientes.nome: NOT NULL DEFAULT '' (compatibilidade)
@@ -472,5 +501,10 @@ SET FOREIGN_KEY_CHECKS = 1;
 --   • sc_orcamentos.cliente_estado: ADICIONADO (char 2)
 --   • sc_usuarios.role: 'atendente' ADICIONADO ao ENUM
 --   • sc_configuracoes.orcamento_whatsapp_msg: ADICIONADO
---   • Todas as 15 tabelas verificadas e validadas contra HeidiSQL
+--   • sc_configuracoes: tipo ENUM inclui 'password'
+--   • sc_configuracoes: SMTP padronizado (smtp_host/port/user/pass/encryption)
+--   • sc_configuracoes: IMAP completo adicionado (10 chaves)
+--   • sc_emails: imap_uid BIGINT UNSIGNED + UNIQUE KEY com pasta
+--   • sc_emails: reply_to_id INT UNSIGNED adicionado
+--   • Todas as 15 tabelas verificadas e validadas
 -- ============================================================
