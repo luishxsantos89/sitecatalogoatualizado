@@ -1,6 +1,10 @@
 <?php
 /**
  * SiteCatalogo2 - Funções Globais
+ * 
+ * CORREÇÃO v3.4: get_config() e set_config() sem cache
+ * Problema: static $cache em get_config() não era invalidado por set_config()
+ * Solução: removido cache completamente — cada chamada vai direto ao banco
  */
 
 require_once __DIR__ . '/db.php';
@@ -263,27 +267,46 @@ function show_flash(): string {
     return $html;
 }
 
-// ==================== CONFIGURAÇÕES ====================
+// ════════════════════════════════════════════════════════════
+// CONFIGURAÇÕES — SEM CACHE (100% confiável)
+// ════════════════════════════════════════════════════════════
 
+/**
+ * Lê uma configuração do banco de dados.
+ * NÃO usa cache — sempre consulta o banco para garantir dados atualizados.
+ */
 function get_config(string $key, $default = null) {
-    static $cache = [];
-    if (isset($cache[$key])) return $cache[$key] ?? $default;
     try {
         $stmt = db()->prepare("SELECT valor FROM " . table('configuracoes') . " WHERE chave = ? AND ativo = 1 LIMIT 1");
         $stmt->execute([$key]);
         $result = $stmt->fetch();
-        $cache[$key] = $result ? $result['valor'] : null;
-        return $cache[$key] ?? $default;
+        return $result ? $result['valor'] : $default;
     } catch (Exception $e) {
         return $default;
     }
 }
 
+/**
+ * Salva uma configuração no banco de dados.
+ * Se a chave não existir, insere. Se existir, atualiza.
+ */
 function set_config(string $key, string $value): bool {
     try {
+        // Tenta UPDATE primeiro
         $stmt = db()->prepare("UPDATE " . table('configuracoes') . " SET valor = ? WHERE chave = ?");
-        return $stmt->execute([$value, $key]);
+        $stmt->execute([$value, $key]);
+
+        // Se não afetou nenhuma linha (chave não existe), faz INSERT
+        if ($stmt->rowCount() === 0) {
+            $stmt = db()->prepare(
+                "INSERT INTO " . table('configuracoes') . " (chave, valor, grupo, tipo, ativo, ordem) VALUES (?, ?, 'geral', 'text', 1, 99)"
+            );
+            $stmt->execute([$key, $value]);
+        }
+
+        return true;
     } catch (Exception $e) {
+        error_log("set_config() erro [{$key}]: " . $e->getMessage());
         return false;
     }
 }

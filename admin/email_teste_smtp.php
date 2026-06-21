@@ -1,8 +1,10 @@
 <?php
 /**
  * email_teste_smtp.php
- * Endpoint AJAX — envia um email de teste usando as configurações SMTP salvas
+ * Endpoint AJAX — envia um email de teste usando as configuracoes SMTP salvas
  * Chamado via fetch() em configuracoes.php
+ * 
+ * v2.0: Suporte a senha unificada (senha_unificada) com fallback para smtp_pass individual
  */
 require_once __DIR__ . '/includes/functions.php';
 
@@ -15,39 +17,41 @@ if (!is_logged_in() || !check_permission('admin')) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(['ok' => false, 'erro' => 'Método inválido.']);
+    echo json_encode(['ok' => false, 'erro' => 'Metodo invalido.']);
     exit;
 }
 
 $para = trim($_POST['para'] ?? '');
 
 if (!filter_var($para, FILTER_VALIDATE_EMAIL)) {
-    echo json_encode(['ok' => false, 'erro' => 'Endereço de email inválido.']);
+    echo json_encode(['ok' => false, 'erro' => 'Endereco de email invalido.']);
     exit;
 }
 
-// Lê configurações SMTP do banco
+// Le configuracoes SMTP do banco (usando get_config diretamente para garantir)
 $host       = get_config('smtp_host', '');
 $port       = (int)get_config('smtp_port', 587);
 $user       = get_config('smtp_user', '');
-$pass       = get_config('smtp_pass', '');
+// NOVO: prioriza senha_unificada, fallback para smtp_pass individual
+$pass       = get_config('senha_unificada', '') ?: get_config('smtp_pass', '');
 $encryption = get_config('smtp_encryption', 'tls');
 $from_email = get_config('email_contato', $user);
 $from_name  = get_config('site_nome_email', '') ?: get_config('site_nome', 'SiteCatalogo');
 
 if (empty($host) || empty($user) || empty($pass)) {
-    echo json_encode(['ok' => false, 'erro' => 'SMTP não configurado. Preencha host, usuário e senha antes de testar.']);
+    echo json_encode(['ok' => false, 'erro' => 'SMTP nao configurado. Preencha email, senha e servidor antes de testar.']);
     exit;
 }
 
 $assunto = '[Teste SMTP] ' . $from_name . ' — ' . date('d/m/Y H:i');
-$corpo   = "Este é um email de teste enviado pelo painel de configurações do SiteCatalogo.\n\n"
-         . "Se você recebeu esta mensagem, seu SMTP está funcionando corretamente!\n\n"
+$corpo   = "Este e um email de teste enviado pelo painel de configuracoes do SiteCatalogo.\n\n"
+         . "Se voce recebeu esta mensagem, seu SMTP esta funcionando corretamente!\n\n"
          . "Data/hora: " . date('d/m/Y H:i:s') . "\n"
          . "Servidor: {$host}:{$port}\n"
+         . "Criptografia: {$encryption}\n"
          . "Remetente: {$from_name} <{$from_email}>";
 
-// ── Tenta PHPMailer ────────────────────────────────────────────
+// —— Tenta PHPMailer ———————————————————————————————————————————
 $phpmailer_paths = [
     __DIR__ . '/../vendor/phpmailer/phpmailer/src/PHPMailer.php',
     __DIR__ . '/vendor/phpmailer/phpmailer/src/PHPMailer.php',
@@ -79,18 +83,19 @@ if ($phpmailer_loaded) {
         $mail->setFrom($from_email, $from_name);
         $mail->addAddress($para);
         $mail->Subject = $assunto;
-        $mail->Body    = $corpo;
-        $mail->isHTML(false);
+        $mail->Body    = nl2br($corpo);
+        $mail->isHTML(true);
+        $mail->AltBody = $corpo;
         $mail->send();
 
-        echo json_encode(['ok' => true, 'msg' => 'Email de teste enviado via PHPMailer.']);
+        echo json_encode(['ok' => true, 'msg' => 'Email de teste enviado com sucesso via PHPMailer!']);
     } catch (Exception $e) {
-        echo json_encode(['ok' => false, 'erro' => htmlspecialchars($mail->ErrorInfo, ENT_QUOTES, 'UTF-8')]);
+        echo json_encode(['ok' => false, 'erro' => 'PHPMailer: ' . htmlspecialchars($mail->ErrorInfo, ENT_QUOTES, 'UTF-8')]);
     }
     exit;
 }
 
-// ── Fallback: mail() nativo ───────────────────────────────────
+// —— Fallback: mail() nativo ——————————————————————————————————
 $headers  = "From: =?UTF-8?B?" . base64_encode($from_name) . "?= <{$from_email}>\r\n";
 $headers .= "Reply-To: {$from_email}\r\n";
 $headers .= "MIME-Version: 1.0\r\n";

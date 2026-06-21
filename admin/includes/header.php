@@ -34,8 +34,26 @@ if (!isset($current_page)) $current_page = basename($_SERVER['PHP_SELF'], '.php'
     <link rel="stylesheet" href="<?php echo defined('ADMIN_URL') ? ADMIN_URL : '../admin/'; ?>assets/css/admin.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Override para integração Tailwind + admin.css customizado */
+        /* Substitua o código anterior por este dentro da tag <style> do seu header.php */
         [x-cloak] { display: none !important; }
+
+        html {
+            /* Diminui o zoom base em exatamente 10% para o Tailwind e fontes nativas */
+            font-size: 90% !important; 
+        }
+
+        body {
+            /* Garante que o fundo preencha tudo e não crie barras de rolagem horizontais */
+            overflow-x: hidden;
+            background-color: #f8fafc;
+            min-height: 100vh;
+        }
+
+        /* Ajuste fino para a sidebar e main não perderem o alinhamento de altura */
+        .admin-wrapper {
+            min-height: 100vh;
+            display: flex;
+        }
     </style>
 </head>
 <body>
