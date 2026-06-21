@@ -228,6 +228,15 @@ function sincronizar_imap(string $pasta_local = 'inbox'): array {
         $status     = isset($ov->seen) && $ov->seen ? 'lido' : 'nao_lido';
         $corpo      = imap_corpo($conn, $uid);
 
+        // Proteção: corta corpos absurdamente grandes (ex: HTML com imagens em base64)
+        // para não estourar limites de coluna em qualquer ambiente/banco.
+        if (mb_strlen($corpo) > 500000) {
+            $corpo = mb_substr($corpo, 0, 500000) . "\n\n[Mensagem truncada — conteúdo muito extenso]";
+        }
+        // Limpa caracteres nulos que o MySQL rejeita em qualquer coluna de texto
+        $corpo = str_replace("\0", '', $corpo);
+        $assunto = mb_substr(str_replace("\0", '', $assunto), 0, 490); // respeita varchar(500)
+
         // Extrai nome e email do remetente
         $rem_nome = $remetente; $rem_email = '';
         if (preg_match('/"?([^"<>]+)"?\s*<([^>]+)>/', $remetente, $m)) {
@@ -238,16 +247,23 @@ function sincronizar_imap(string $pasta_local = 'inbox'): array {
             $rem_nome  = '';
         }
 
-        db()->prepare(
-            "INSERT INTO " . table('emails') . "
-             (imap_uid, remetente_nome, remetente_email, destinatario_email, assunto, corpo, pasta, status, data_envio)
-             VALUES (?,?,?,?,?,?,?,?,?)"
-        )->execute([
-            $uid, $rem_nome, $rem_email,
-            get_config('imap_user', ''),
-            $assunto, $corpo, $pasta_local, $status, $data_envio,
-        ]);
-        $novos++;
+        try {
+            db()->prepare(
+                "INSERT INTO " . table('emails') . "
+                 (imap_uid, remetente_nome, remetente_email, destinatario_email, assunto, corpo, pasta, status, data_envio)
+                 VALUES (?,?,?,?,?,?,?,?,?)"
+            )->execute([
+                $uid, $rem_nome, $rem_email,
+                get_config('imap_user', ''),
+                $assunto, $corpo, $pasta_local, $status, $data_envio,
+            ]);
+            $novos++;
+        } catch (PDOException $e) {
+            // Não interrompe a sincronização por causa de um email problemático;
+            // segue para o próximo e continua contando os que deram certo.
+            error_log('Falha ao sincronizar email UID ' . $uid . ': ' . $e->getMessage());
+            continue;
+        }
     }
 
     imap_close($conn);

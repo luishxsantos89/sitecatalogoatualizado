@@ -189,40 +189,69 @@ require_once __DIR__ . '/includes/header.php';
                 <i class="fas fa-chevron-right" style="color:var(--primary);margin-right:6px;font-size:0.875rem;"></i>Email — Envio e Recebimento
             </h3>
 
+            <?php /* ── Seletor de Provedor (autopreenchimento) ── */ ?>
+            <div style="margin-bottom:20px;padding:14px 16px;background:#f5f3ff;border:1px solid #c4b5fd;border-radius:8px;">
+                <label style="display:block;font-size:0.8rem;font-weight:700;color:#5b21b6;margin-bottom:6px;">
+                    <i class="fas fa-magic"></i> Preenchimento Rápido por Provedor
+                </label>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <select id="provedor_select" onchange="aplicarProvedor()" style="flex:1;min-width:220px;padding:9px 12px;border:1px solid #c4b5fd;border-radius:6px;font-size:0.875rem;background:#fff;">
+                        <option value="">Selecione um provedor...</option>
+                        <option value="gmail">Gmail</option>
+                        <option value="outlook">Outlook / Hotmail / Office365</option>
+                        <option value="yahoo">Yahoo Mail</option>
+                        <option value="icloud">Apple Mail (iCloud)</option>
+                        <option value="proton">Proton Mail</option>
+                        <option value="zoho">Zoho Mail</option>
+                        <option value="aol">AOL Mail</option>
+                        <option value="gmx">GMX Mail</option>
+                        <option value="yandex">Yandex Mail</option>
+                        <option value="titan">Titan Mail</option>
+                        <option value="cpanel">Domínio Próprio (cPanel / Hostgator / etc.)</option>
+                    </select>
+                    <span id="provedor_aviso" style="font-size:0.8rem;color:#5b21b6;"></span>
+                </div>
+                <p id="provedor_dica" style="margin:8px 0 0;font-size:0.78rem;color:#6d28d9;display:none;"></p>
+            </div>
+
             <?php /* ── SMTP ── */ ?>
             <div style="margin-bottom:8px;">
                 <span style="display:inline-block;font-size:0.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-500);margin-bottom:10px;">
                     <i class="fas fa-paper-plane" style="margin-right:4px;color:#3b82f6;"></i>Envio (SMTP)
                 </span>
+                <div style="margin-top:4px;padding:10px 12px;background:#eff6ff;border-left:3px solid #3b82f6;border-radius:6px;font-size:0.8rem;color:#1e40af;">
+                    <i class="fas fa-circle-info"></i> O SMTP é o serviço que <strong>envia</strong> os emails do sistema. Preencha com o email e a senha que você usa para entrar na sua caixa de email (webmail) — não é a senha do painel admin do site.
+                </div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;margin-top:14px;">
                 <div class="form-group">
-                    <label>Servidor SMTP <small style="color:var(--gray-400);">ex: mail.seudominio.com</small></label>
-                    <input type="text" name="config[smtp_host]" value="<?php echo sanitize(get_config('smtp_host','')); ?>" placeholder="mail.seudominio.com">
+                    <label>Servidor SMTP <small style="color:var(--gray-400);">endereço do servidor de envio</small></label>
+                    <input type="text" id="smtp_host_input" name="config[smtp_host]" value="<?php echo sanitize(get_config('smtp_host','')); ?>" placeholder="mail.seudominio.com">
                 </div>
                 <div class="form-group">
                     <label>Porta <small style="color:var(--gray-400);">587=TLS · 465=SSL · 25=sem</small></label>
-                    <input type="number" name="config[smtp_port]" value="<?php echo (int)get_config('smtp_port',587) ?: 587; ?>" placeholder="587">
+                    <input type="number" id="smtp_port_input" name="config[smtp_port]" value="<?php echo (int)get_config('smtp_port',587) ?: 587; ?>" placeholder="587">
                 </div>
                 <div class="form-group">
                     <label>Criptografia</label>
-                    <select name="config[smtp_encryption]">
+                    <select id="smtp_encryption_input" name="config[smtp_encryption]">
                         <?php foreach (['tls'=>'TLS (porta 587)','ssl'=>'SSL (porta 465)',''=>'Nenhuma (porta 25)'] as $v=>$l): ?>
                         <option value="<?php echo $v; ?>" <?php echo selected(get_config('smtp_encryption','tls'),$v); ?>><?php echo $l; ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Usuário SMTP (email completo)</label>
-                    <input type="email" name="config[smtp_user]" value="<?php echo sanitize(get_config('smtp_user','')); ?>" placeholder="contato@seudominio.com">
+                    <label>Usuário SMTP (email completo) <small style="color:var(--gray-400);">o email que envia as mensagens</small></label>
+                    <input type="email" id="smtp_user_input" name="config[smtp_user]" value="<?php echo sanitize(get_config('smtp_user','')); ?>" placeholder="contato@seudominio.com" oninput="sincronizarEmail(this.value)">
                 </div>
                 <div class="form-group">
-                    <label>Senha SMTP</label>
+                    <label>Senha SMTP <small style="color:var(--gray-400);">a mesma senha que você usa para entrar nesse email (webmail)</small></label>
                     <div style="position:relative;">
                         <input type="password" id="smtp_pass_input" name="config[smtp_pass]" value="<?php echo sanitize(get_config('smtp_pass','')); ?>" placeholder="••••••••" style="padding-right:40px;width:100%;">
                         <button type="button" onclick="toggleSenha('smtp_pass_input','smtp_pass_eye')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--gray-400);">
                             <i class="fas fa-eye" id="smtp_pass_eye"></i>
                         </button>
+
                     </div>
                 </div>
                 <div class="form-group">
@@ -257,29 +286,32 @@ require_once __DIR__ . '/includes/header.php';
                     <i class="fas fa-check-circle"></i> Extensão IMAP disponível
                 </div>
                 <?php endif; ?>
+                <div style="margin-top:8px;padding:10px 12px;background:#f0fdf4;border-left:3px solid #22c55e;border-radius:6px;font-size:0.8rem;color:#166534;">
+                    <i class="fas fa-circle-info"></i> O IMAP é o serviço que <strong>busca e sincroniza</strong> os emails recebidos para dentro do sistema. Use o mesmo email e a mesma senha de login do webmail — geralmente igual ao SMTP acima.
+                </div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;margin-top:14px;">
                 <div class="form-group">
-                    <label>Servidor IMAP <small style="color:var(--gray-400);">ex: mail.seudominio.com</small></label>
-                    <input type="text" name="config[imap_host]" value="<?php echo sanitize(get_config('imap_host','')); ?>" placeholder="mail.seudominio.com">
+                    <label>Servidor IMAP <small style="color:var(--gray-400);">endereço do servidor de recebimento</small></label>
+                    <input type="text" id="imap_host_input" name="config[imap_host]" value="<?php echo sanitize(get_config('imap_host','')); ?>" placeholder="mail.seudominio.com">
                 </div>
                 <div class="form-group">
                     <label>Porta <small style="color:var(--gray-400);">993=SSL · 143=TLS/sem</small></label>
-                    <input type="number" name="config[imap_port]" value="<?php echo (int)get_config('imap_port',993) ?: 993; ?>" placeholder="993">
+                    <input type="number" id="imap_port_input" name="config[imap_port]" value="<?php echo (int)get_config('imap_port',993) ?: 993; ?>" placeholder="993">
                 </div>
                 <div class="form-group">
                     <label>Usar SSL</label>
-                    <select name="config[imap_ssl]">
+                    <select id="imap_ssl_input" name="config[imap_ssl]">
                         <option value="1" <?php echo selected(get_config('imap_ssl','1'),'1'); ?>>Sim — SSL/TLS (porta 993)</option>
                         <option value="0" <?php echo selected(get_config('imap_ssl','1'),'0'); ?>>Não — sem SSL (porta 143)</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Usuário IMAP (email completo)</label>
-                    <input type="email" name="config[imap_user]" value="<?php echo sanitize(get_config('imap_user','')); ?>" placeholder="contato@seudominio.com">
+                    <label>Usuário IMAP (email completo) <small style="color:var(--gray-400);">o email de onde as mensagens serão lidas</small></label>
+                    <input type="email" id="imap_user_input" name="config[imap_user]" value="<?php echo sanitize(get_config('imap_user','')); ?>" placeholder="contato@seudominio.com" oninput="sincronizarEmail(this.value, true)">
                 </div>
                 <div class="form-group">
-                    <label>Senha IMAP</label>
+                    <label>Senha IMAP <small style="color:var(--gray-400);">a mesma senha que você usa para entrar nesse email (webmail)</small></label>
                     <div style="position:relative;">
                         <input type="password" id="imap_pass_input" name="config[imap_pass]" value="<?php echo sanitize(get_config('imap_pass','')); ?>" placeholder="••••••••" style="padding-right:40px;width:100%;">
                         <button type="button" onclick="toggleSenha('imap_pass_input','imap_pass_eye')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--gray-400);">
@@ -310,7 +342,7 @@ require_once __DIR__ . '/includes/header.php';
                     ] as $key => [$label, $default]): ?>
                     <div class="form-group" style="margin:0;">
                         <label style="font-size:0.8rem;"><?php echo $label; ?></label>
-                        <input type="text" name="config[<?php echo $key; ?>]"
+                        <input type="text" id="<?php echo $key; ?>_input" name="config[<?php echo $key; ?>]"
                                value="<?php echo sanitize(get_config($key, $default)); ?>"
                                placeholder="<?php echo $default; ?>">
                     </div>
@@ -335,6 +367,194 @@ require_once __DIR__ . '/includes/header.php';
         </form>
     </div>
 </div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// AUTOPREENCHIMENTO POR PROVEDOR
+// ════════════════════════════════════════════════════════════
+const PROVEDORES = {
+    gmail: {
+        nome: 'Gmail',
+        smtp: { host: 'smtp.gmail.com', port: 587, encryption: 'tls' },
+        imap: { host: 'imap.gmail.com', port: 993, ssl: '1',
+                folders: { sent: '[Gmail]/Sent Mail', drafts: '[Gmail]/Drafts', archive: '[Gmail]/All Mail', spam: '[Gmail]/Spam', trash: '[Gmail]/Trash' } },
+        dica: 'No Gmail você precisa gerar uma "Senha de App" em myaccount.google.com/apppasswords (não use a senha normal da conta). Ative a verificação em duas etapas primeiro.',
+    },
+    outlook: {
+        nome: 'Outlook / Hotmail / Office365',
+        smtp: { host: 'smtp.office365.com', port: 587, encryption: 'tls' },
+        imap: { host: 'outlook.office365.com', port: 993, ssl: '1',
+                folders: { sent: 'Sent Items', drafts: 'Drafts', archive: 'Archive', spam: 'Junk Email', trash: 'Deleted Items' } },
+        dica: 'Contas Microsoft 365/Outlook podem exigir "Senha de aplicativo" se a autenticação multifator estiver ativa.',
+    },
+    yahoo: {
+        nome: 'Yahoo Mail',
+        smtp: { host: 'smtp.mail.yahoo.com', port: 587, encryption: 'tls' },
+        imap: { host: 'imap.mail.yahoo.com', port: 993, ssl: '1',
+                folders: { sent: 'Sent', drafts: 'Draft', archive: 'Archive', spam: 'Bulk Mail', trash: 'Trash' } },
+        dica: 'O Yahoo exige "Senha de app" gerada em Configurações da Conta → Segurança.',
+    },
+    icloud: {
+        nome: 'Apple Mail (iCloud)',
+        smtp: { host: 'smtp.mail.me.com', port: 587, encryption: 'tls' },
+        imap: { host: 'imap.mail.me.com', port: 993, ssl: '1',
+                folders: { sent: 'Sent Messages', drafts: 'Drafts', archive: 'Archive', spam: 'Junk', trash: 'Deleted Messages' } },
+        dica: 'Use uma "Senha específica de app" gerada em appleid.apple.com — a senha normal da Apple ID não funciona aqui.',
+    },
+    proton: {
+        nome: 'Proton Mail',
+        smtp: { host: '127.0.0.1', port: 1025, encryption: '' },
+        imap: { host: '127.0.0.1', port: 1143, ssl: '0',
+                folders: { sent: 'Sent', drafts: 'Drafts', archive: 'Archive', spam: 'Spam', trash: 'Trash' } },
+        dica: 'Proton Mail exige o "Proton Mail Bridge" (app desktop) rodando no servidor para expor SMTP/IMAP local — não há acesso direto sem ele (plano pago).',
+    },
+    zoho: {
+        nome: 'Zoho Mail',
+        smtp: { host: 'smtp.zoho.com', port: 587, encryption: 'tls' },
+        imap: { host: 'imap.zoho.com', port: 993, ssl: '1',
+                folders: { sent: 'Sent', drafts: 'Drafts', archive: 'Archive', spam: 'Spam', trash: 'Trash' } },
+        dica: 'Ative o acesso IMAP em Configurações → Mail Accounts → IMAP Access no painel Zoho.',
+    },
+    aol: {
+        nome: 'AOL Mail',
+        smtp: { host: 'smtp.aol.com', port: 587, encryption: 'tls' },
+        imap: { host: 'imap.aol.com', port: 993, ssl: '1',
+                folders: { sent: 'Sent', drafts: 'Drafts', archive: 'Archive', spam: 'Spam', trash: 'Trash' } },
+        dica: 'AOL também exige "Senha de app" gerada nas configurações de segurança da conta.',
+    },
+    gmx: {
+        nome: 'GMX Mail',
+        smtp: { host: 'smtp.gmx.com', port: 587, encryption: 'tls' },
+        imap: { host: 'imap.gmx.com', port: 993, ssl: '1',
+                folders: { sent: 'Sent', drafts: 'Drafts', archive: 'Archive', spam: 'Spam', trash: 'Trash' } },
+        dica: 'No GMX, habilite "POP3/IMAP" em Configurações → POP3/IMAP antes de conectar.',
+    },
+    yandex: {
+        nome: 'Yandex Mail',
+        smtp: { host: 'smtp.yandex.com', port: 587, encryption: 'tls' },
+        imap: { host: 'imap.yandex.com', port: 993, ssl: '1',
+                folders: { sent: 'Sent', drafts: 'Drafts', archive: 'Archive', spam: 'Spam', trash: 'Trash' } },
+        dica: 'No Yandex, ative "Permitir acesso IMAP" em Configurações → Clientes de e-mail.',
+    },
+    titan: {
+        nome: 'Titan Mail',
+        smtp: { host: 'smtp.titan.email', port: 587, encryption: 'tls' },
+        imap: { host: 'imap.titan.email', port: 993, ssl: '1',
+                folders: { sent: 'Sent', drafts: 'Drafts', archive: 'Archive', spam: 'Spam', trash: 'Trash' } },
+        dica: 'Titan Mail (usado por Hostinger e outros) usa a senha normal da caixa postal.',
+    },
+    cpanel: {
+        nome: 'Domínio Próprio (cPanel)',
+        smtp: { host: 'mail.SEUDOMINIO.com', port: 587, encryption: 'tls' },
+        imap: { host: 'mail.SEUDOMINIO.com', port: 993, ssl: '1',
+                folders: { sent: 'Sent', drafts: 'Drafts', archive: 'Archive', spam: 'Junk', trash: 'Trash' } },
+        dica: 'Substitua "SEUDOMINIO.com" pelo seu domínio real (ex: mail.minhaempresa.com.br). Em hospedagens como Hostgator, o host também pode ser o IP do servidor — confira em cPanel → Contas de Email → Configurar Cliente de Email.',
+    },
+};
+
+function aplicarProvedor() {
+    const key = document.getElementById('provedor_select').value;
+    const aviso = document.getElementById('provedor_aviso');
+    const dicaEl = document.getElementById('provedor_dica');
+    if (!key) { dicaEl.style.display = 'none'; aviso.textContent = ''; return; }
+
+    const p = PROVEDORES[key];
+    if (!p) return;
+
+    // SMTP
+    document.getElementById('smtp_host_input').value = p.smtp.host;
+    document.getElementById('smtp_port_input').value = p.smtp.port;
+    document.getElementById('smtp_encryption_input').value = p.smtp.encryption;
+
+    // IMAP
+    document.getElementById('imap_host_input').value = p.imap.host;
+    document.getElementById('imap_port_input').value = p.imap.port;
+    document.getElementById('imap_ssl_input').value = p.imap.ssl;
+
+    // Pastas especiais
+    const f = p.imap.folders;
+    document.getElementById('imap_folder_sent_input').value    = f.sent;
+    document.getElementById('imap_folder_drafts_input').value  = f.drafts;
+    document.getElementById('imap_folder_archive_input').value = f.archive;
+    document.getElementById('imap_folder_spam_input').value    = f.spam;
+    document.getElementById('imap_folder_trash_input').value   = f.trash;
+
+    // Aplica o email já digitado (se houver) ao usuário SMTP/IMAP
+    const emailAtual = document.getElementById('smtp_user_input').value || document.getElementById('imap_user_input').value;
+    if (emailAtual) {
+        document.getElementById('smtp_user_input').value = emailAtual;
+        document.getElementById('imap_user_input').value = emailAtual;
+    }
+
+    // Domínio Próprio (cPanel): se já existe um email preenchido, troca SEUDOMINIO.com pelo domínio real na hora
+    if (key === 'cpanel' && emailAtual && emailAtual.includes('@')) {
+        const dominioReal = emailAtual.split('@')[1];
+        if (dominioReal && dominioReal.includes('.')) {
+            const hostCorrigido = 'mail.' + dominioReal.toLowerCase().trim();
+            document.getElementById('smtp_host_input').value = hostCorrigido;
+            document.getElementById('imap_host_input').value = hostCorrigido;
+        }
+    }
+
+    aviso.innerHTML = '<i class="fas fa-check-circle" style="color:#10b981;"></i> Campos preenchidos para ' + p.nome;
+    dicaEl.innerHTML = '<i class="fas fa-info-circle"></i> ' + p.dica;
+    dicaEl.style.display = 'block';
+}
+
+// Detecta provedor automaticamente pelo domínio do email digitado
+const DOMINIO_PARA_PROVEDOR = {
+    'gmail.com': 'gmail', 'googlemail.com': 'gmail',
+    'outlook.com': 'outlook', 'hotmail.com': 'outlook', 'live.com': 'outlook', 'msn.com': 'outlook',
+    'yahoo.com': 'yahoo', 'yahoo.com.br': 'yahoo', 'ymail.com': 'yahoo',
+    'icloud.com': 'icloud', 'me.com': 'icloud', 'mac.com': 'icloud',
+    'proton.me': 'proton', 'protonmail.com': 'proton',
+    'zoho.com': 'zoho',
+    'aol.com': 'aol',
+    'gmx.com': 'gmx', 'gmx.net': 'gmx',
+    'yandex.com': 'yandex', 'yandex.ru': 'yandex',
+    'titan.email': 'titan',
+};
+
+function sincronizarEmail(valor, fromImap) {
+    // Espelha o email entre os campos SMTP e IMAP
+    const alvo = fromImap ? 'smtp_user_input' : 'imap_user_input';
+    const campoAlvo = document.getElementById(alvo);
+    if (campoAlvo && !campoAlvo.value) campoAlvo.value = valor;
+
+    const partes = valor.split('@');
+    if (partes.length !== 2 || !partes[1]) return;
+    const dominio = partes[1].toLowerCase().trim();
+    const select = document.getElementById('provedor_select');
+
+    // Se o provedor ativo é "Domínio Próprio", troca o placeholder SEUDOMINIO.com
+    // pelo domínio real que a pessoa está digitando no email — em todos os hosts.
+    if (select.value === 'cpanel' && dominio.includes('.')) {
+        const hostFields = ['smtp_host_input', 'imap_host_input'];
+        hostFields.forEach(id => {
+            const campo = document.getElementById(id);
+            if (!campo) return;
+            // Só troca se ainda contém o placeholder OU já contém um domínio (mantém prefixo mail.)
+            if (campo.value.includes('SEUDOMINIO.com') || campo.value.includes('.')) {
+                campo.value = 'mail.' + dominio;
+            }
+        });
+        const aviso = document.getElementById('provedor_aviso');
+        aviso.innerHTML = '<i class="fas fa-check-circle" style="color:#10b981;"></i> Servidor ajustado para mail.' + dominio;
+        return;
+    }
+
+    // Auto-detecta provedor pelo domínio (só sugere, não força) — apenas quando nada foi escolhido ainda
+    const provedorKey = DOMINIO_PARA_PROVEDOR[dominio];
+    if (provedorKey && select.value !== provedorKey) {
+        select.value = provedorKey;
+        aplicarProvedor();
+    } else if (!provedorKey && select.value === '') {
+        // Domínio próprio detectado, sugere cPanel sem forçar
+        const aviso = document.getElementById('provedor_aviso');
+        aviso.innerHTML = '<i class="fas fa-lightbulb" style="color:#f59e0b;"></i> Domínio próprio detectado — selecione "Domínio Próprio (cPanel)" para preencher automaticamente com mail.' + dominio;
+    }
+}
+</script>
 
 <script>
 // Mostrar/ocultar senhas
